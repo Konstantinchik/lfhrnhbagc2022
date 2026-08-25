@@ -1,0 +1,19 @@
+# MCP Server
+mcp-server/node_modules/
+mcp-server/.env
+mcp-server/dist/
+mcp-server/logs/
+mcp-server/*.log
+
+# Blender
+blender-scripts/__pycache__/
+blender-scripts/*.pyc
+
+# Claude Config (может содержать API ключи)
+.claude/mcp_config.json
+
+# Временные файлы
+*.tmp
+*.temp
+.DS_Store
+Thumbs.db
