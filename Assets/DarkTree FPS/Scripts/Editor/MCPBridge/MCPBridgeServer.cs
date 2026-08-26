@@ -129,6 +129,13 @@ namespace DarkTreeFPS.MCPBridge
                         ThreadPool.QueueUserWorkItem(_ => HandleRequest(context));
                     }
                 }
+                catch (ThreadAbortException)
+                {
+                    // Unity останавливает поток при перекомпиляции - это нормально
+                    Debug.Log("[MCPBridge] Listener thread stopped (compilation or editor closing)");
+                    Thread.ResetAbort();
+                    break;
+                }
                 catch (HttpListenerException)
                 {
                     // Сервер остановлен
