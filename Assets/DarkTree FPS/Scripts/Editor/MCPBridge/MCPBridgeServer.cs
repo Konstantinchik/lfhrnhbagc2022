@@ -119,32 +119,51 @@ namespace DarkTreeFPS.MCPBridge
 
         private static void ListenerLoop()
         {
-            while (isRunning)
+            try
             {
-                try
+                while (isRunning)
                 {
-                    if (listener.IsListening)
+                    try
                     {
-                        var context = listener.GetContext();
-                        ThreadPool.QueueUserWorkItem(_ => HandleRequest(context));
+                        if (listener != null && listener.IsListening)
+                        {
+                            var context = listener.GetContext();
+                            ThreadPool.QueueUserWorkItem(_ => HandleRequest(context));
+                        }
+                    }
+                    catch (ThreadAbortException)
+                    {
+                        // Unity останавливает поток при перекомпиляции - это нормально
+                        Debug.Log("[MCPBridge] Listener thread stopped (compilation or editor closing)");
+                        Thread.ResetAbort();
+                        break;
+                    }
+                    catch (HttpListenerException)
+                    {
+                        // Сервер остановлен
+                        break;
+                    }
+                    catch (ObjectDisposedException)
+                    {
+                        // Listener был disposed - нормальная остановка
+                        break;
+                    }
+                    catch (Exception e)
+                    {
+                        if (!isRunning) break;
+                        Debug.LogError($"[MCPBridge] Listener error: {e.Message}");
                     }
                 }
-                catch (ThreadAbortException)
-                {
-                    // Unity останавливает поток при перекомпиляции - это нормально
-                    Debug.Log("[MCPBridge] Listener thread stopped (compilation or editor closing)");
-                    Thread.ResetAbort();
-                    break;
-                }
-                catch (HttpListenerException)
-                {
-                    // Сервер остановлен
-                    break;
-                }
-                catch (Exception e)
-                {
-                    Debug.LogError($"[MCPBridge] Listener error: {e.Message}");
-                }
+            }
+            catch (ThreadAbortException)
+            {
+                // Финальная обработка ThreadAbortException на уровне всего метода
+                Debug.Log("[MCPBridge] Listener thread aborted gracefully");
+                Thread.ResetAbort();
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"[MCPBridge] Fatal listener error: {e.Message}");
             }
         }
 
