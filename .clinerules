@@ -1,0 +1,9 @@
+# DarkTreeFPS2022 Project Root
+
+This Cline workspace is the Unity project at `D:\PROJECTS\DarkTreeFPS2022\lfhrnhbagc2022`.
+
+- Treat `D:\PROJECTS\DarkTreeFPS2022\lfhrnhbagc2022` as the project root for every task. Do not ask the user to provide a project path.
+- Run repository commands from this root unless a task explicitly names a subdirectory, such as `mcp-server`.
+- Before listing, reading, editing, testing, or creating files, use paths relative to this root.
+- Do not operate in `C:\Users\Developer\.cline\data\workspaces\chat`; it is Cline internal storage, not the project.
+- Follow the versioned project instructions in `.agents\skills\darktree-unity-project\SKILL.md` and `.agents\skills\qwen-coder-12k-workflow\SKILL.md`.
