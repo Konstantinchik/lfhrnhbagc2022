@@ -65,7 +65,8 @@ Invoke-Test 'Cline rules pin project root and task ownership' {
     Assert-TextContains $rules 'pending user approval' '.clinerules must distinguish pending commands from completed output.'
     Assert-TextContains $rules 'имя_папки_1' '.clinerules must explicitly reject placeholder folder names.'
     Assert-TextContains $rules 'файл_1.txt' '.clinerules must explicitly reject placeholder file names.'
-    Assert-TextContains $rules 'Select-Object Mode, LastWriteTime, Length, Name' '.clinerules must use a deterministic project-root listing command.'
+    Assert-TextContains $rules 'append `\` to directory names' '.clinerules must require a trailing backslash for directory names.'
+    Assert-TextContains $rules '@{Name=''Name'';Expression={ if ($_.PSIsContainer)' '.clinerules must use a deterministic formatted listing command.'
     Assert-TextContains $rules 'docs\ai-tasks\' '.clinerules must name the durable task folder.'
     Assert-TextContains $rules 'CLINE-' '.clinerules must document CLINE ownership.'
     Assert-TextContains $rules 'CC-' '.clinerules must document CC ownership.'
@@ -87,6 +88,7 @@ Invoke-Test 'Agent skills document owner-prefix workflow' {
     Assert-TextContains $skillText 'CODEX-NNN-kebab-title.md' 'Task format must include CODEX file naming.'
     Assert-TextContains $skillText 'Owner:' 'Task format must include an Owner field.'
     Assert-TextContains $skillText 'needs-owner-review' 'Task format must describe recoverable ownership conflicts.'
+    Assert-TextContains $skillText 'append `\` to directory names' 'Skills must require a trailing backslash for directory names.'
 }
 
 Invoke-Test 'Task generator creates recoverable owner-routed handoffs' {

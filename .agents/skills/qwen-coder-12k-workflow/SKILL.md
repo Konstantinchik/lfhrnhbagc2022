@@ -41,4 +41,5 @@ The filename prefix and the `Owner:` field inside the task file should match. Tr
 
 - Preserve headroom for tool calls and model output. A task that names many unrelated systems, asks for broad research, and requests implementation should be split before it reaches Cline.
 - Include exact paths, identifiers, and constraints needed for the next action; omit old reasoning, full logs, source dumps, and MCP tool schemas.
+- When listing or summarizing filesystem names, append `\` to directory names and leave file names unchanged.
 - When a response fails or reaches a limit, do not retry with a larger prompt. Record the useful state in the task file, reduce the next unit of work, and continue in a fresh task.
