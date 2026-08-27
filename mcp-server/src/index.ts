@@ -6,7 +6,6 @@ import {
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import axios from 'axios';
-import { z } from 'zod';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -379,3 +378,4 @@ main().catch((error) => {
   console.error('Fatal error:', error);
   process.exit(1);
 });
+

@@ -104,3 +104,17 @@ InitTestScene*.unity*
 
 # Auto-generated cache in Assets folder
 /[Aa]ssets/[Ss]ceneDependencyCache*
+# MCP Server
+mcp-server/node_modules/
+mcp-server/.env
+mcp-server/dist/
+mcp-server/logs/
+mcp-server/*.log
+
+# Blender generated files
+blender-scripts/__pycache__/
+blender-scripts/*.pyc
+
+# Claude Code local MCP config
+.claude/mcp_config.json
+
