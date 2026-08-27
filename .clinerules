@@ -8,6 +8,23 @@ This Cline workspace is the Unity project at `D:\PROJECTS\DarkTreeFPS2022\lfhrnh
 - Do not operate in `C:\Users\Developer\.cline\data\workspaces\chat`; it is Cline internal storage, not the project.
 - Follow the versioned project instructions in `.agents\skills\darktree-unity-project\SKILL.md` and `.agents\skills\qwen-coder-12k-workflow\SKILL.md`.
 
+## Dialogue Language
+
+- The user works in Russian. Answer in Russian for all natural-language dialogue.
+- English is allowed only for code, commands, file paths, API names, tool names, logs, and quoted source text.
+- Do not switch planning or explanations to English unless the user explicitly asks for English.
+
+## Command Discipline
+
+- For simple repository requests such as listing the project root, checking Git status, reading files, or running workflow tests, use explicit PowerShell commands rooted at the project path.
+- Do not run a bare `dir`, `ls`, `Get-ChildItem`, `git status`, or similar command until the shell location has been set to the project root.
+- For "выведи список корневого каталога проекта", use:
+
+```powershell
+Set-Location -LiteralPath 'D:\PROJECTS\DarkTreeFPS2022\lfhrnhbagc2022'
+Get-ChildItem -Force
+```
+
 ## AI Task Ownership
 
 Use `docs\ai-tasks\` for durable agent handoffs. Task filenames must start with one of these owner prefixes:

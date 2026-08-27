@@ -58,6 +58,9 @@ Invoke-Test 'Cline rules pin project root and task ownership' {
     $rules = Get-Content -Raw -LiteralPath $rulesPath
 
     Assert-TextContains $rules 'D:\PROJECTS\DarkTreeFPS2022\lfhrnhbagc2022' '.clinerules must pin the project root.'
+    Assert-TextContains $rules 'Answer in Russian' '.clinerules must require Russian dialogue.'
+    Assert-TextContains $rules 'Set-Location -LiteralPath' '.clinerules must require explicit project-root shell location.'
+    Assert-TextContains $rules 'Do not run a bare `dir`' '.clinerules must reject bare directory commands.'
     Assert-TextContains $rules 'docs\ai-tasks\' '.clinerules must name the durable task folder.'
     Assert-TextContains $rules 'CLINE-' '.clinerules must document CLINE ownership.'
     Assert-TextContains $rules 'CC-' '.clinerules must document CC ownership.'

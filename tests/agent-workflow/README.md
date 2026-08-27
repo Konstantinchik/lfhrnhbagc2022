@@ -11,6 +11,7 @@ Run from the project root:
 The suite currently checks:
 
 - `.clinerules` contains the project root and task-owner routing rules.
+- `.clinerules` requires Russian dialogue and explicit project-root commands.
 - `.agents/skills` document the `CLINE`, `CC`, and `CODEX` task prefixes.
 - `new-qwen-task.ps1` creates recoverable task handoffs:
   - default `AUTO` routes to `CLINE`;
