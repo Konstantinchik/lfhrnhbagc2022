@@ -18,11 +18,14 @@ This Cline workspace is the Unity project at `D:\PROJECTS\DarkTreeFPS2022\lfhrnh
 
 - For simple repository requests such as listing the project root, checking Git status, reading files, or running workflow tests, use explicit PowerShell commands rooted at the project path.
 - Do not run a bare `dir`, `ls`, `Get-ChildItem`, `git status`, or similar command until the shell location has been set to the project root.
+- Never invent, simulate, summarize from memory, or use placeholder names for command output. Report filesystem listings only from actual command/tool results.
+- If a command is pending user approval or has not run yet, say in Russian that the command is waiting for approval. Do not present any directory contents until the command completes.
+- Never output placeholder entries such as `имя_папки_1`, `имя_папки_2`, `файл_1.txt`, or `файл_2.txt` as if they were real project files.
 - For "выведи список корневого каталога проекта", use:
 
 ```powershell
 Set-Location -LiteralPath 'D:\PROJECTS\DarkTreeFPS2022\lfhrnhbagc2022'
-Get-ChildItem -Force
+Get-ChildItem -Force | Select-Object Mode, LastWriteTime, Length, Name
 ```
 
 ## AI Task Ownership

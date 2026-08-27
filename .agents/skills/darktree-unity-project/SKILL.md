@@ -11,6 +11,7 @@ Work in `D:\PROJECTS\DarkTreeFPS2022\lfhrnhbagc2022` unless the user explicitly 
 
 - Treat this as a Unity 2022.3.15f1 project. Preserve Unity `.meta` files and asset GUID relationships; never regenerate or delete them to fix an import issue.
 - Inspect the surrounding scripts, scene, and existing project documentation before changing gameplay behavior. Keep changes scoped to the requested feature or defect.
+- Treat command and filesystem output as observed facts only after a tool or command returns. Never fabricate directory listings, placeholder paths, or example file names as if they were real project state.
 - Use `docs/ai-tasks/` for durable AI task handoffs. `CLINE-` belongs to Cline, `CC-` belongs to Claude Code, and `CODEX-` belongs to Codex; the task file's `Owner:` field should match the filename prefix. If `Status: needs-owner-review` is present, confirm ownership before execution.
 - The project has an HTTP Unity Editor bridge on port `7777` and a Node stdio MCP server in `mcp-server`. For editor or scene changes, first check the bridge connection. Read [the MCP reference](references/unity-mcp.md) when using that workflow.
 - Prefer C# and serialized Unity asset changes for durable gameplay behavior. Use MCP for editor operations such as scene inspection, object creation, import, animation retargeting, and reading Unity console output.
