@@ -1,0 +1,4 @@
+interface:
+  display_name: "Qwen Coder 12K Workflow"
+  short_description: "Split Cline work into compact durable task handoffs"
+  default_prompt: "Use $qwen-coder-12k-workflow to prepare compact Cline tasks for this project."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "DarkTree Unity Project"
+  short_description: "Maintain DarkTreeFPS2022 with Unity MCP support"
+  default_prompt: "Use $darktree-unity-project to work on the requested DarkTreeFPS2022 Unity change."
