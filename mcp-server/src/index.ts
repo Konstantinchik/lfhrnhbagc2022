@@ -5,24 +5,35 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
-import axios from 'axios';
+import axios, { AxiosInstance } from 'axios';
 import dotenv from 'dotenv';
 
 dotenv.config();
 
+// Timeouts (ms): health check is cheap, editor commands may take longer
+const HEALTH_TIMEOUT_MS = 2000;
+const COMMAND_TIMEOUT_MS = 30000;
+const ANIMATION_TIMEOUT_MS = 120000;
+
 // Unity Bridge client
 class UnityBridgeClient {
   private baseUrl: string;
+  private http: AxiosInstance;
 
   constructor() {
     const host = process.env.UNITY_EDITOR_HOST || 'localhost';
     const port = process.env.UNITY_EDITOR_PORT || '7777';
     this.baseUrl = `http://${host}:${port}`;
+    this.http = axios.create({
+      baseURL: this.baseUrl,
+      timeout: COMMAND_TIMEOUT_MS,
+      validateStatus: null,
+    });
   }
 
   async isConnected(): Promise<boolean> {
     try {
-      const response = await axios.get(`${this.baseUrl}/health`, { timeout: 2000 });
+      const response = await this.http.get(`/health`, { timeout: HEALTH_TIMEOUT_MS });
       return response.status === 200;
     } catch {
       return false;
@@ -30,7 +41,7 @@ class UnityBridgeClient {
   }
 
   async executeCommand(command: string, args?: Record<string, any>): Promise<any> {
-    const response = await axios.post(`${this.baseUrl}/execute`, {
+    const response = await this.http.post(`/execute`, {
       command,
       args: args || {}
     });
@@ -38,12 +49,12 @@ class UnityBridgeClient {
   }
 
   async getSceneInfo(): Promise<any> {
-    const response = await axios.get(`${this.baseUrl}/scene`);
+    const response = await this.http.get(`/scene`);
     return response.data;
   }
 
   async importAsset(path: string, options?: Record<string, any>): Promise<any> {
-    const response = await axios.post(`${this.baseUrl}/import`, {
+    const response = await this.http.post(`/import`, {
       path,
       options: options || {}
     });
@@ -56,7 +67,7 @@ class UnityBridgeClient {
     targetSkeletonType: string;
     outputPath: string;
   }): Promise<any> {
-    const response = await axios.post(`${this.baseUrl}/animation/retarget`, options);
+    const response = await this.http.post(`/animation/retarget`, options, { timeout: ANIMATION_TIMEOUT_MS });
     return response.data;
   }
 }
@@ -94,7 +105,7 @@ const tools = [
       properties: {
         command: {
           type: 'string',
-          description: 'Unity command to execute (e.g., "CreateGameObject", "SaveScene")',
+          description: 'Unity command to execute (e.g., "CreateGameObject", "DebugLog", "SaveScene")',
         },
         args: {
           type: 'object',
@@ -110,6 +121,26 @@ const tools = [
     inputSchema: {
       type: 'object',
       properties: {},
+    },
+  },
+  {
+    name: 'unity_debug_log',
+    description: 'Write a one-off message to the Unity Console via Debug.Log, Debug.LogWarning, or Debug.LogError. Use this for requests like "выведи в Console/Log"; do not create scripts, GameObjects, prefabs, or assets for one-time log messages.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        message: {
+          type: 'string',
+          description: 'Message to write to the Unity Console',
+        },
+        level: {
+          type: 'string',
+          description: 'Log level: "log", "warning", or "error". Defaults to "log".',
+          enum: ['log', 'warning', 'error'],
+          default: 'log',
+        },
+      },
+      required: ['message'],
     },
   },
   {
@@ -212,6 +243,29 @@ const tools = [
       },
     },
   },
+  {
+    name: 'unity_play_mode',
+    description: 'Enter or exit Play Mode in Unity Editor, or check current status',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          description: 'Action to perform: "enter", "exit" or "status"',
+          enum: ['enter', 'exit', 'status'],
+        },
+      },
+      required: ['action'],
+    },
+  },
+  {
+    name: 'unity_compilation_check',
+    description: 'Check Unity script compilation status and get recent compile errors',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+    },
+  },
 ];
 
 // List tools handler
@@ -262,6 +316,22 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             {
               type: 'text',
               text: JSON.stringify(sceneInfo, null, 2),
+            },
+          ],
+        };
+      }
+
+      case 'unity_debug_log': {
+        const { message, level } = args as { message: string; level?: 'log' | 'warning' | 'error' };
+        const result = await unityClient.executeCommand('DebugLog', {
+          message,
+          level: level || 'log',
+        });
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(result, null, 2),
             },
           ],
         };
@@ -344,6 +414,35 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
 
+      case 'unity_play_mode': {
+        const { action } = args as { action: 'enter' | 'exit' | 'status' };
+        const result = await unityClient.executeCommand(
+          action === 'enter' ? 'EnterPlayMode'
+          : action === 'exit' ? 'ExitPlayMode'
+          : 'IsPlayMode'
+        );
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      }
+
+      case 'unity_compilation_check': {
+        const result = await unityClient.executeCommand('GetCompilationErrors');
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      }
+
       default:
         throw new Error(`Unknown tool: ${name}`);
     }
@@ -378,4 +477,3 @@ main().catch((error) => {
   console.error('Fatal error:', error);
   process.exit(1);
 });
-

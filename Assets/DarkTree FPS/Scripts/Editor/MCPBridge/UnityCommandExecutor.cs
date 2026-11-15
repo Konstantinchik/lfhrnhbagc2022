@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEditor;
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -25,12 +26,52 @@ namespace DarkTreeFPS.MCPBridge
                 case "GetConsoleLogs":
                     return GetConsoleLogs(args);
 
+                case "DebugLog":
+                    return DebugLog(args);
+
                 case "SaveScene":
                     return SaveScene();
 
                 case "RefreshAssetDatabase":
                     AssetDatabase.Refresh();
                     return new { success = true, message = "Asset Database refreshed" };
+
+                case "EnterPlayMode":
+                    if (!EditorApplication.isPlaying)
+                    {
+                        EditorApplication.isPlaying = true;
+                    }
+                    return new
+                    {
+                        success = true,
+                        isPlaying = EditorApplication.isPlaying,
+                        message = "Entering Play Mode"
+                    };
+
+                case "ExitPlayMode":
+                    if (EditorApplication.isPlaying)
+                    {
+                        EditorApplication.isPlaying = false;
+                    }
+                    return new
+                    {
+                        success = true,
+                        isPlaying = EditorApplication.isPlaying,
+                        message = "Exiting Play Mode"
+                    };
+
+                case "IsPlayMode":
+                    return new
+                    {
+                        success = true,
+                        isPlaying = EditorApplication.isPlaying,
+                        isPaused = EditorApplication.isPaused,
+                        isCompiling = EditorApplication.isCompiling,
+                        isUpdating = EditorApplication.isUpdating
+                    };
+
+                case "GetCompilationErrors":
+                    return GetCompilationErrors();
 
                 default:
                     throw new ArgumentException($"Unknown command: {command}");
@@ -202,19 +243,172 @@ namespace DarkTreeFPS.MCPBridge
             };
         }
 
+        private static object DebugLog(JObject args)
+        {
+            string message = args?["message"]?.ToString() ?? string.Empty;
+            string level = args?["level"]?.ToString()?.ToLowerInvariant() ?? "log";
+
+            switch (level)
+            {
+                case "warning":
+                case "warn":
+                    Debug.LogWarning(message);
+                    level = "warning";
+                    break;
+
+                case "error":
+                    Debug.LogError(message);
+                    break;
+
+                default:
+                    Debug.Log(message);
+                    level = "log";
+                    break;
+            }
+
+            return new
+            {
+                success = true,
+                command = "DebugLog",
+                level,
+                message
+            };
+        }
+
         private static object GetConsoleLogs(JObject args)
         {
             int count = args?["count"]?.ToObject<int>() ?? 50;
             string filter = args?["filter"]?.ToString()?.ToLower() ?? "all";
 
-            // Unity не предоставляет прямого API для Console логов
-            // Нужно использовать рефлексию или собственную систему логирования
+            var logs = new List<object>();
+            int errorCount = 0, warningCount = 0, logCount = 0;
+
+            try
+            {
+                Assembly editorAssembly = typeof(EditorWindow).Assembly;
+                Type logEntriesType = editorAssembly.GetType("UnityEditor.LogEntries");
+                Type logEntryType = editorAssembly.GetType("UnityEditor.LogEntry");
+
+                if (logEntriesType == null || logEntryType == null)
+                {
+                    return new
+                    {
+                        success = false,
+                        error = "LogEntries reflection not available in this Unity version",
+                        count = 0,
+                        logs = logs
+                    };
+                }
+
+                // Надёжные счётчики через документированный API отражения
+                MethodInfo getCountByMode = logEntriesType.GetMethod("GetCountByMode");
+                if (getCountByMode != null)
+                {
+                    errorCount = (int)getCountByMode.Invoke(null, new object[] { 0 });
+                    warningCount = (int)getCountByMode.Invoke(null, new object[] { 2 });
+                    logCount = (int)getCountByMode.Invoke(null, new object[] { 3 });
+                }
+
+                // Чтение записей: StartGettingEntries / NextEntry / EndGettingEntries
+                MethodInfo startGetting = logEntriesType.GetMethod("StartGettingEntries");
+                MethodInfo nextEntry = logEntriesType.GetMethod("NextEntry");
+                MethodInfo endGetting = logEntriesType.GetMethod("EndGettingEntries");
+
+                if (startGetting == null || nextEntry == null || endGetting == null)
+                {
+                    return new
+                    {
+                        success = true,
+                        error = errorCount,
+                        warning = warningCount,
+                        info = logCount,
+                        message = "Entry iteration not available in this Unity version",
+                        count = 0,
+                        logs = logs
+                    };
+                }
+
+                FieldInfo conditionField = logEntryType.GetField("condition");
+                FieldInfo modeField = logEntryType.GetField("mode");
+
+                startGetting.Invoke(null, null);
+                try
+                {
+                    object[] nextArgs = new object[] { Activator.CreateInstance(logEntryType) };
+                    while (logs.Count < count && (bool)nextEntry.Invoke(null, nextArgs))
+                    {
+                        object entry = nextArgs[0];
+                        string condition = conditionField?.GetValue(entry) as string ?? string.Empty;
+                        int mode = (int)(modeField?.GetValue(entry) ?? 0);
+
+                        string level;
+                        if ((mode & 2) != 0) level = "warning";
+                        else if ((mode & 4) != 0) level = "error";
+                        else level = "info";
+
+                        if (filter == "all" || filter == level)
+                        {
+                            logs.Add(new { level, message = condition });
+                        }
+                    }
+                }
+                finally
+                {
+                    endGetting.Invoke(null, null);
+                }
+            }
+            catch (Exception e)
+            {
+                return new
+                {
+                    success = false,
+                    error = e.Message,
+                    count = logs.Count,
+                    logs = logs
+                };
+            }
 
             return new
             {
-                message = "Console logs API is not directly accessible. Consider implementing custom logging system.",
-                count = 0,
-                logs = new List<object>()
+                success = true,
+                error = errorCount,
+                warning = warningCount,
+                info = logCount,
+                count = logs.Count,
+                logs = logs
+            };
+        }
+
+        private static object GetCompilationErrors()
+        {
+            int errorCount = 0, warningCount = 0;
+
+            try
+            {
+                Type logEntriesType = typeof(EditorWindow).Assembly.GetType("UnityEditor.LogEntries");
+                MethodInfo getCountByMode = logEntriesType?.GetMethod("GetCountByMode");
+                if (getCountByMode != null)
+                {
+                    errorCount = (int)getCountByMode.Invoke(null, new object[] { 0 });
+                    warningCount = (int)getCountByMode.Invoke(null, new object[] { 2 });
+                }
+            }
+            catch (Exception)
+            {
+                // счётчики недоступны - вернём только статус компиляции
+            }
+
+            return new
+            {
+                success = true,
+                isCompiling = EditorApplication.isCompiling,
+                isUpdating = EditorApplication.isUpdating,
+                isPlaying = EditorApplication.isPlaying,
+                errorCount = errorCount,
+                warningCount = warningCount,
+                message = EditorApplication.isCompiling
+                    ? "Compilation in progress"
+                    : (errorCount > 0 ? $"{errorCount} compile error(s) in console" : "No compilation errors")
             };
         }
 
