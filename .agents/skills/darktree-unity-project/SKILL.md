@@ -13,8 +13,9 @@ Work in `D:\PROJECTS\DarkTreeFPS2022\lfhrnhbagc2022` unless the user explicitly 
 - Inspect the surrounding scripts, scene, and existing project documentation before changing gameplay behavior. Keep changes scoped to the requested feature or defect.
 - Treat command and filesystem output as observed facts only after a tool or command returns. Never fabricate directory listings, placeholder paths, or example file names as if they were real project state.
 - When presenting filesystem names, append `\` to directory names and leave file names unchanged. For example: `Assets\`, `ProjectSettings\`, `.clinerules`.
+- For one-off Unity Console messages, use MCP `unity_debug_log` or command `DebugLog`; do not create scripts, GameObjects, or assets for `Debug.Log(...)` requests.
 - Use `docs/ai-tasks/` for durable AI task handoffs. `CLINE-` belongs to Cline, `CC-` belongs to Claude Code, and `CODEX-` belongs to Codex; the task file's `Owner:` field should match the filename prefix. If `Status: needs-owner-review` is present, confirm ownership before execution.
-- The project has an HTTP Unity Editor bridge on port `7777` and a Node stdio MCP server in `mcp-server`. For editor or scene changes, first check the bridge connection. Read [the MCP reference](references/unity-mcp.md) when using that workflow.
+- The project has an HTTP Unity Editor bridge on port `7777` and a Node stdio MCP server in `mcp-server`. For editor or scene changes, first check the bridge connection with `D:\PROJECTS\DarkTreeFPS2022\lfhrnhbagc2022\mcp-server\connect-to-unity.ps1`. Read [the MCP reference](references/unity-mcp.md) when using that workflow.
 - Prefer C# and serialized Unity asset changes for durable gameplay behavior. Use MCP for editor operations such as scene inspection, object creation, import, animation retargeting, and reading Unity console output.
 - Do not assume Unity is running. If the bridge is unavailable, report that editor-side commands cannot be verified; continue with safe code inspection or edits where possible.
 
@@ -29,3 +30,4 @@ Work in `D:\PROJECTS\DarkTreeFPS2022\lfhrnhbagc2022` unless the user explicitly 
 ## Local Utilities
 
 `D:\FREE_AGENT_LM\scripts\check-env.ps1` checks LM Studio, the MCP server build, and the Unity bridge. Use it for environment diagnosis, not as a prerequisite for unrelated source-code work.
+`D:\PROJECTS\DarkTreeFPS2022\lfhrnhbagc2022\mcp-server\connect-to-unity.ps1` is the canonical Unity MCP bridge check for Cline, Claude Code, and Codex. `D:\PROJECTS\DarkTreeFPS2022\lfhrnhbagc2022\mcp-server\check-mcp-health.ps1` is a compatibility alias that delegates to it. If it reports that the bridge is unreachable, do not claim editor-side MCP work succeeded.

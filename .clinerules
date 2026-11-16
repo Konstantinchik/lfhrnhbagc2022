@@ -1,4 +1,4 @@
-# DarkTreeFPS2022 Project Root
+﻿# DarkTreeFPS2022 Project Root
 
 This Cline workspace is the Unity project at `D:\PROJECTS\DarkTreeFPS2022\lfhrnhbagc2022`.
 
@@ -44,3 +44,26 @@ Before committing changes to `.clinerules`, `.agents\skills\`, or `docs\ai-tasks
 ```powershell
 .\tests\agent-workflow\run-tests.ps1
 ```
+## Unity MCP Connection
+
+- To check Unity MCP connectivity, prefer this canonical project script:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File "D:\PROJECTS\DarkTreeFPS2022\lfhrnhbagc2022\mcp-server\connect-to-unity.ps1"
+```
+
+- These compatibility aliases are also valid and delegate to the same canonical check:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File "D:\PROJECTS\DarkTreeFPS2022\lfhrnhbagc2022\mcp-server\check-mcp-health.ps1"
+powershell -NoProfile -ExecutionPolicy Bypass -File "D:\PROJECTS\DarkTreeFPS2022\lfhrnhbagc2022\check-mcp-health.ps1"
+```
+
+- Do not invent alternative helper scripts, Python shims, or placeholder commands for Unity connection checks. Use only `connect-to-unity.ps1` or `check-mcp-health.ps1`.
+- If the script reports `Unity MCP Bridge is not reachable`, tell the user that Unity Editor or `Window -> MCP Bridge -> Start Server` must be running before editor-side MCP actions can be verified.
+- If the script reports `Unity MCP Bridge responded but health failed`, tell the user that the bridge process answered but Unity must recompile the editor scripts or run `Window -> MCP Bridge -> Restart Server` before health checks pass.
+## Unity Console Logging
+
+- For one-off requests to write text to Unity Console or Log, use MCP `unity_debug_log`, execute command `DebugLog`, or run `mcp-server\debug-log.ps1 -Message "..."`.
+- Do not create `MonoBehaviour` scripts, `.cs` files, GameObjects, prefabs, scene objects, or assets for one-time Console/Log messages.
+- Example intent mapping: `выведи в Log Unity: "Привет всем"` means call `Debug.Log("Привет всем")` through MCP, not create `LogMessage.cs`.

@@ -215,4 +215,4 @@ public void ThrowGrenade()
 ---
 
 **Назад:** [Часть 1](./WEAPON_SYSTEM_1.md)  
-**Далее:** [Система Инвентаря](./INVENTORY_SYSTEM.md)
+**Далее:** [Инвентарь](./INVENTORY_SYSTEM.md), [проверка системы оружия по исходному коду — часть 3](./WEAPON_SYSTEM_3.md)
