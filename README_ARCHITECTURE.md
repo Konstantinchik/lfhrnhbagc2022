@@ -29,6 +29,9 @@
 
 ## 📂 Структура Проекта
 
+Карта функциональных модулей, зависимостей и безопасных границ изменений: [docs/PROJECT_SYSTEMS_MAP.md](docs/PROJECT_SYSTEMS_MAP.md).
+
+
 ```
 Assets/DarkTree FPS/
 ├── Scripts/
