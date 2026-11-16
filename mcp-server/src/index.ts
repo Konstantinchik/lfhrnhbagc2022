@@ -7,8 +7,12 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import axios, { AxiosInstance } from 'axios';
 import dotenv from 'dotenv';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-dotenv.config();
+// Resolve configuration beside the MCP server, not from the client's working directory.
+const serverDirectory = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.resolve(serverDirectory, '..', '.env') });
 
 // Timeouts (ms): health check is cheap, editor commands may take longer
 const HEALTH_TIMEOUT_MS = 2000;
@@ -28,6 +32,10 @@ class UnityBridgeClient {
       baseURL: this.baseUrl,
       timeout: COMMAND_TIMEOUT_MS,
       validateStatus: null,
+      headers: {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Accept': 'application/json',
+      },
     });
   }
 

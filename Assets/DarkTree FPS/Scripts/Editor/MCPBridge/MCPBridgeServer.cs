@@ -21,10 +21,22 @@ namespace DarkTreeFPS.MCPBridge
         private static bool isRunning = false;
         private static int port = 7777;
 
+        // Очередь задач на главный поток Unity (обрабатывается в EditorApplication.update)
+        private class MainThreadJob
+        {
+            public Func<object> work;
+            public object result;
+            public Exception error;
+            public readonly ManualResetEventSlim done = new ManualResetEventSlim(false);
+        }
+
+        private static readonly System.Collections.Concurrent.BlockingCollection<MainThreadJob> mainThreadQueue =
+            new System.Collections.Concurrent.BlockingCollection<MainThreadJob>();
+
         // Статический конструктор - запускается при загрузке Unity Editor
         static MCPBridgeServer()
         {
-            EditorApplication.update += OnEditorUpdate;
+            EditorApplication.update += ProcessMainThreadQueue;
             EditorApplication.quitting += OnEditorQuitting;
 
             // Автозапуск если включен в настройках
@@ -34,10 +46,44 @@ namespace DarkTreeFPS.MCPBridge
             }
         }
 
-        private static void OnEditorUpdate()
+        private static void ProcessMainThreadQueue()
         {
-            // Проверка один раз при инициализации
-            EditorApplication.update -= OnEditorUpdate;
+            while (mainThreadQueue.TryTake(out var job))
+            {
+                try
+                {
+                    job.result = job.work();
+                }
+                catch (Exception e)
+                {
+                    job.error = e;
+                }
+                finally
+                {
+                    job.done.Set();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Выполнить работу на главном потоке Unity и дождаться результата
+        /// </summary>
+        private static object RunOnMainThread(Func<object> work, int timeoutMs, string jobName)
+        {
+            var job = new MainThreadJob { work = work };
+            mainThreadQueue.Add(job);
+
+            if (!job.done.Wait(timeoutMs))
+            {
+                throw new TimeoutException($"Unity command timed out: {jobName}");
+            }
+
+            if (job.error != null)
+            {
+                throw job.error;
+            }
+
+            return job.result;
         }
 
         private static void OnEditorQuitting()
@@ -221,7 +267,8 @@ namespace DarkTreeFPS.MCPBridge
                 }
 
                 byte[] buffer = Encoding.UTF8.GetBytes(responseString);
-                response.ContentType = "application/json";
+                response.ContentEncoding = Encoding.UTF8;
+                response.ContentType = "application/json; charset=utf-8";
                 response.ContentLength64 = buffer.Length;
                 response.OutputStream.Write(buffer, 0, buffer.Length);
             }
@@ -234,6 +281,8 @@ namespace DarkTreeFPS.MCPBridge
                     stackTrace = e.StackTrace
                 });
                 byte[] buffer = Encoding.UTF8.GetBytes(errorResponse);
+                response.ContentEncoding = Encoding.UTF8;
+                response.ContentType = "application/json; charset=utf-8";
                 response.OutputStream.Write(buffer, 0, buffer.Length);
             }
             finally
@@ -247,8 +296,9 @@ namespace DarkTreeFPS.MCPBridge
             return JsonConvert.SerializeObject(new
             {
                 status = "ok",
-                unityVersion = Application.unityVersion,
-                projectName = Application.productName,
+                bridge = "DarkTreeFPS MCP Bridge",
+                port,
+                isRunning,
                 timestamp = DateTime.UtcNow.ToString("o")
             });
         }
@@ -261,34 +311,21 @@ namespace DarkTreeFPS.MCPBridge
             string command = data["command"].ToString();
             var args = data.ContainsKey("args") ? data["args"] as Newtonsoft.Json.Linq.JObject : null;
 
-            // Выполнить команду в главном потоке Unity
-            object result = null;
-            Exception error = null;
-
-            EditorApplication.delayCall += () =>
+            if (command == "DebugLog")
             {
-                try
+                object directResult = UnityCommandExecutor.Execute(command, args);
+                return JsonConvert.SerializeObject(new
                 {
-                    result = UnityCommandExecutor.Execute(command, args);
-                }
-                catch (Exception e)
-                {
-                    error = e;
-                }
-            };
-
-            // Ждем выполнения (максимум 10 секунд)
-            int timeout = 100; // 10 секунд
-            while (result == null && error == null && timeout > 0)
-            {
-                Thread.Sleep(100);
-                timeout--;
+                    success = true,
+                    command,
+                    result = directResult
+                });
             }
 
-            if (error != null)
-            {
-                throw error;
-            }
+            // Выполнить команду в главном потоке Unity через очередь задач
+            object result = RunOnMainThread(
+                () => UnityCommandExecutor.Execute(command, args),
+                30000, command);
 
             return JsonConvert.SerializeObject(new
             {
@@ -297,23 +334,11 @@ namespace DarkTreeFPS.MCPBridge
                 result
             });
         }
-
         private static string HandleGetSceneInfo()
         {
-            string result = "";
-            EditorApplication.delayCall += () =>
-            {
-                result = UnityCommandExecutor.GetSceneInfo();
-            };
-
-            int timeout = 50;
-            while (string.IsNullOrEmpty(result) && timeout > 0)
-            {
-                Thread.Sleep(100);
-                timeout--;
-            }
-
-            return result;
+            return (string)RunOnMainThread(
+                () => UnityCommandExecutor.GetSceneInfo(),
+                30000, "GetSceneInfo");
         }
 
         private static string HandleImportAsset(HttpListenerRequest request)
@@ -324,20 +349,9 @@ namespace DarkTreeFPS.MCPBridge
             string path = data["path"].ToString();
             var options = data.ContainsKey("options") ? data["options"] as Newtonsoft.Json.Linq.JObject : null;
 
-            string result = "";
-            EditorApplication.delayCall += () =>
-            {
-                result = UnityCommandExecutor.ImportAsset(path, options);
-            };
-
-            int timeout = 100;
-            while (string.IsNullOrEmpty(result) && timeout > 0)
-            {
-                Thread.Sleep(100);
-                timeout--;
-            }
-
-            return result;
+            return (string)RunOnMainThread(
+                () => UnityCommandExecutor.ImportAsset(path, options),
+                30000, "ImportAsset");
         }
 
         private static string HandleAnimationRetarget(HttpListenerRequest request)
@@ -345,25 +359,19 @@ namespace DarkTreeFPS.MCPBridge
             string body = ReadRequestBody(request);
             var data = JsonConvert.DeserializeObject<Dictionary<string, object>>(body);
 
-            string result = "";
-            EditorApplication.delayCall += () =>
-            {
-                result = AnimationRetargeting.RetargetAnimation(data);
-            };
-
-            int timeout = 200; // Анимации могут требовать больше времени
-            while (string.IsNullOrEmpty(result) && timeout > 0)
-            {
-                Thread.Sleep(100);
-                timeout--;
-            }
-
-            return result;
+            return (string)RunOnMainThread(
+                () => AnimationRetargeting.RetargetAnimation(data),
+                120000, "AnimationRetarget"); // Анимации могут требовать больше времени
         }
 
         private static string ReadRequestBody(HttpListenerRequest request)
         {
-            using (var reader = new System.IO.StreamReader(request.InputStream, request.ContentEncoding))
+            // JSON requests from MCP clients are UTF-8. Use it explicitly instead of relying
+            // on HttpListener's inferred/default request encoding (often code page 1252).
+            using (var reader = new System.IO.StreamReader(
+                request.InputStream,
+                Encoding.UTF8,
+                detectEncodingFromByteOrderMarks: true))
             {
                 return reader.ReadToEnd();
             }

@@ -300,21 +300,17 @@ namespace DarkTreeFPS.MCPBridge
                     };
                 }
 
-                // Надёжные счётчики через документированный API отражения
+                // Надёжные счётчики (после StartGettingEntries)
                 MethodInfo getCountByMode = logEntriesType.GetMethod("GetCountByMode");
-                if (getCountByMode != null)
-                {
-                    errorCount = (int)getCountByMode.Invoke(null, new object[] { 0 });
-                    warningCount = (int)getCountByMode.Invoke(null, new object[] { 2 });
-                    logCount = (int)getCountByMode.Invoke(null, new object[] { 3 });
-                }
+                MethodInfo getCount = logEntriesType.GetMethod("GetCount");
 
-                // Чтение записей: StartGettingEntries / NextEntry / EndGettingEntries
+                // Чтение записей: GetEntryCount + GetEntryInternal (Unity 2022+)
+                MethodInfo getEntryCount = logEntriesType.GetMethod("GetEntryCount");
+                MethodInfo getEntryInternal = logEntriesType.GetMethod("GetEntryInternal", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static);
                 MethodInfo startGetting = logEntriesType.GetMethod("StartGettingEntries");
-                MethodInfo nextEntry = logEntriesType.GetMethod("NextEntry");
                 MethodInfo endGetting = logEntriesType.GetMethod("EndGettingEntries");
 
-                if (startGetting == null || nextEntry == null || endGetting == null)
+                if (getEntryCount == null || getEntryInternal == null || startGetting == null || endGetting == null)
                 {
                     return new
                     {
@@ -322,33 +318,100 @@ namespace DarkTreeFPS.MCPBridge
                         error = errorCount,
                         warning = warningCount,
                         info = logCount,
-                        message = "Entry iteration not available in this Unity version",
+                        message = "Console entry API not available in this Unity version",
                         count = 0,
                         logs = logs
                     };
                 }
 
-                FieldInfo conditionField = logEntryType.GetField("condition");
+                FieldInfo messageField = logEntryType.GetField("message") ?? logEntryType.GetField("condition");
                 FieldInfo modeField = logEntryType.GetField("mode");
+
+                // Счётчики ДО StartGettingEntries (после старта сессии они кидают исключения)
+                if (getCountByMode != null)
+                {
+                    try { errorCount = (int)getCountByMode.Invoke(null, new object[] { 0 }); } catch { }
+                    try { warningCount = (int)getCountByMode.Invoke(null, new object[] { 2 }); } catch { }
+                    try { logCount = (int)getCountByMode.Invoke(null, new object[] { 3 }); } catch { }
+                }
+
+                MethodInfo getRows = logEntriesType.GetMethod("GetRows");
+                List<int> rows = new List<int>();
+
+                // Всего записей: сумма по классам 0..2 (error/assert/warning/log)
+                int totalEntries = 0;
+                for (int m = 0; m <= 2; m++)
+                {
+                    try { totalEntries += (int)getEntryCount.Invoke(null, new object[] { m }); } catch { }
+                }
 
                 startGetting.Invoke(null, null);
                 try
                 {
-                    object[] nextArgs = new object[] { Activator.CreateInstance(logEntryType) };
-                    while (logs.Count < count && (bool)nextEntry.Invoke(null, nextArgs))
+                    // Сначала пробуем GetRows, но fallback - прямые индексы 0..total-1
+                    if (getRows != null)
                     {
-                        object entry = nextArgs[0];
-                        string condition = conditionField?.GetValue(entry) as string ?? string.Empty;
+                        try { getRows.Invoke(null, new object[] { rows }); } catch { }
+                    }
+                    if (rows.Count != totalEntries)
+                    {
+                        rows.Clear();
+                        for (int i = 0; i < totalEntries; i++) rows.Add(i);
+                    }
+
+                    // Зондирование: счётчики по режимам 0..3 через GetEntryCount
+                    if (args?["debug"]?.ToObject<bool>() == true)
+                    {
+                        var probe = new Dictionary<string, object>();
+                        probe["GetRows"] = rows.Count;
+                        for (int m = 0; m <= 3; m++)
+                        {
+                            try { probe["GetEntryCount(" + m + ")"] = (int)getEntryCount.Invoke(null, new object[] { m }); } catch (Exception pe) { probe["GetEntryCount(" + m + ")"] = pe.Message; }
+                        }
+                        logs.Add(new { level = "probe", probe });
+                    }
+
+                    // Новые записи в конце списка - идём с конца по валидным строкам
+                    for (int r = rows.Count - 1; r >= 0 && logs.Count < count; r--)
+                    {
+                        object entry = Activator.CreateInstance(logEntryType);
+                        object[] entryArgs = new object[] { rows[r], entry };
+                        getEntryInternal.Invoke(null, entryArgs);
+                        entry = entryArgs[1];
+
+                        string condition = messageField?.GetValue(entry) as string ?? string.Empty;
                         int mode = (int)(modeField?.GetValue(entry) ?? 0);
 
+                        // Биты уровня в LogEntry.mode (определены эмпирически для Unity 2022):
+                        // error = 1<<23, warning = 1<<21, остальное - info
                         string level;
-                        if ((mode & 2) != 0) level = "warning";
-                        else if ((mode & 4) != 0) level = "error";
+                        if ((mode & (1 << 23)) != 0) level = "error";
+                        else if ((mode & (1 << 21)) != 0) level = "warning";
                         else level = "info";
+
+                        object logItem;
+                        if (args?["debug"]?.ToObject<bool>() == true)
+                        {
+                            var fields = new Dictionary<string, object>();
+                            foreach (var f in logEntryType.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
+                            {
+                                fields[f.Name] = f.GetValue(entry);
+                            }
+                            var props = new Dictionary<string, object>();
+                            foreach (var p in logEntryType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
+                            {
+                                try { props[p.Name] = p.GetValue(entry); } catch { }
+                            }
+                            logItem = new { level, message = condition, mode, fields, properties = props };
+                        }
+                        else
+                        {
+                            logItem = new { level, message = condition };
+                        }
 
                         if (filter == "all" || filter == level)
                         {
-                            logs.Add(new { level, message = condition });
+                            logs.Add(logItem);
                         }
                     }
                 }
@@ -359,10 +422,13 @@ namespace DarkTreeFPS.MCPBridge
             }
             catch (Exception e)
             {
+                Exception inner = (e is TargetInvocationException tie && tie.InnerException != null) ? tie.InnerException : e;
                 return new
                 {
                     success = false,
-                    error = e.Message,
+                    error = inner.Message,
+                    stackTrace = inner.StackTrace,
+                    signatures = GetLogMethodSignatures(),
                     count = logs.Count,
                     logs = logs
                 };
@@ -377,6 +443,30 @@ namespace DarkTreeFPS.MCPBridge
                 count = logs.Count,
                 logs = logs
             };
+        }
+
+        private static List<string> GetLogMethodSignatures()
+        {
+            var signatures = new List<string>();
+            try
+            {
+                Type logEntriesType = typeof(EditorWindow).Assembly.GetType("UnityEditor.LogEntries");
+                if (logEntriesType == null) return signatures;
+
+                foreach (var name in new[] { "GetEntryInternal", "GetEntryCount", "StartGettingEntries", "GetCountsByType" })
+                {
+                    foreach (var m in logEntriesType.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static))
+                    {
+                        if (m.Name != name) continue;
+                        var ps = m.GetParameters();
+                        var sig = name + "(" + string.Join(", ", System.Array.ConvertAll(ps, p => (p.ParameterType.IsByRef ? "ref " : "") + p.ParameterType.Name)) + ")";
+                        signatures.Add(sig);
+                    }
+                }
+            }
+            catch { }
+
+            return signatures;
         }
 
         private static object GetCompilationErrors()
