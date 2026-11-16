@@ -246,15 +246,21 @@ namespace DarkTreeFPS
             {
                 var _lookPosition = desiredPosition - transform.position;
                 _lookPosition.y = 0;
-                var rotation = Quaternion.LookRotation(_lookPosition);
-                transform.rotation = Quaternion.Slerp(transform.rotation, rotation, Time.deltaTime * 2);
+                if (_lookPosition.sqrMagnitude > 0.0001f)
+                {
+                    var rotation = Quaternion.LookRotation(_lookPosition);
+                    transform.rotation = Quaternion.Slerp(transform.rotation, rotation, Time.deltaTime * 2);
+                }
             }
             else
             {
                 var _lookPosition = curretTarget.position - transform.position;
                 _lookPosition.y = 0;
-                var rotation = Quaternion.LookRotation(_lookPosition);
-                transform.rotation = Quaternion.Slerp(transform.rotation, rotation, Time.deltaTime * 2);
+                if (_lookPosition.sqrMagnitude > 0.0001f)
+                {
+                    var rotation = Quaternion.LookRotation(_lookPosition);
+                    transform.rotation = Quaternion.Slerp(transform.rotation, rotation, Time.deltaTime * 2);
+                }
             }
 
             Attack();
