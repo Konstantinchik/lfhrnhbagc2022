@@ -141,6 +141,98 @@ namespace DTInventory
         /// </summary>
         [HideInInspector] InventoryManager inventoryManager;
 
+        private RectTransform gridContent;
+        private ScrollRect gridScrollRect;
+
+        private void InitializeScrollableGrid()
+        {
+            var viewportTransform = transform.Find("Inventory Viewport");
+            if (viewportTransform == null)
+            {
+                var viewportObject = new GameObject("Inventory Viewport", typeof(RectTransform), typeof(Image), typeof(Mask));
+                viewportTransform = viewportObject.transform;
+                viewportTransform.SetParent(transform, false);
+
+                var viewportRect = viewportObject.GetComponent<RectTransform>();
+                viewportRect.anchorMin = new Vector2(0, 1);
+                viewportRect.anchorMax = new Vector2(0, 1);
+                viewportRect.pivot = new Vector2(0, 1);
+                viewportRect.anchoredPosition = Vector2.zero;
+                viewportRect.sizeDelta = new Vector2(column * cellSize, row * cellSize);
+
+                var viewportImage = viewportObject.GetComponent<Image>();
+                viewportImage.color = Color.white;
+                viewportImage.raycastTarget = true;
+                viewportObject.GetComponent<Mask>().showMaskGraphic = false;
+            }
+
+            var contentTransform = viewportTransform.Find("Inventory Content");
+            if (contentTransform == null)
+            {
+                var contentObject = new GameObject("Inventory Content", typeof(RectTransform));
+                contentTransform = contentObject.transform;
+                contentTransform.SetParent(viewportTransform, false);
+            }
+
+            gridContent = contentTransform.GetComponent<RectTransform>();
+            gridContent.anchorMin = new Vector2(0, 1);
+            gridContent.anchorMax = new Vector2(0, 1);
+            gridContent.pivot = new Vector2(0, 1);
+            gridContent.anchoredPosition = Vector2.zero;
+            UpdateGridContentSize();
+
+            gridScrollRect = GetComponent<ScrollRect>();
+            if (gridScrollRect == null)
+                gridScrollRect = gameObject.AddComponent<ScrollRect>();
+            gridScrollRect.viewport = viewportTransform.GetComponent<RectTransform>();
+            gridScrollRect.content = gridContent;
+            gridScrollRect.horizontal = false;
+            gridScrollRect.vertical = true;
+            gridScrollRect.movementType = ScrollRect.MovementType.Clamped;
+
+            var scrollbarTransform = transform.Find("Inventory Vertical Scrollbar");
+            if (scrollbarTransform == null)
+            {
+                var scrollbarObject = new GameObject("Inventory Vertical Scrollbar", typeof(RectTransform), typeof(Image), typeof(Scrollbar));
+                scrollbarTransform = scrollbarObject.transform;
+                scrollbarTransform.SetParent(transform, false);
+
+                var scrollbarRect = scrollbarObject.GetComponent<RectTransform>();
+                scrollbarRect.anchorMin = new Vector2(0, 1);
+                scrollbarRect.anchorMax = new Vector2(0, 1);
+                scrollbarRect.pivot = new Vector2(0, 1);
+                scrollbarRect.anchoredPosition = new Vector2(column * cellSize + 2, 0);
+                scrollbarRect.sizeDelta = new Vector2(12, row * cellSize);
+                scrollbarObject.GetComponent<Image>().color = new Color(0, 0, 0, 0.35f);
+
+                var handleObject = new GameObject("Handle", typeof(RectTransform), typeof(Image));
+                handleObject.transform.SetParent(scrollbarTransform, false);
+                var handleRect = handleObject.GetComponent<RectTransform>();
+                handleRect.anchorMin = Vector2.zero;
+                handleRect.anchorMax = Vector2.one;
+                handleRect.offsetMin = new Vector2(2, 2);
+                handleRect.offsetMax = new Vector2(-2, -2);
+                var handleImage = handleObject.GetComponent<Image>();
+                handleImage.color = Color.white;
+
+                var scrollbar = scrollbarObject.GetComponent<Scrollbar>();
+                scrollbar.direction = Scrollbar.Direction.BottomToTop;
+                scrollbar.handleRect = handleRect;
+                scrollbar.targetGraphic = handleImage;
+            }
+
+            gridScrollRect.verticalScrollbar = scrollbarTransform.GetComponent<Scrollbar>();
+            gridScrollRect.verticalScrollbarVisibility = ScrollRect.ScrollbarVisibility.AutoHide;
+            viewportTransform.SetAsFirstSibling();
+            scrollbarTransform.SetSiblingIndex(1);
+        }
+
+        private void UpdateGridContentSize()
+        {
+            if (gridContent != null)
+                gridContent.sizeDelta = new Vector2(column * cellSize, Mathf.Max(row, 1) * cellSize);
+        }
+
         /// <summary>
         /// Internal method being used by InventoryWizard. Do not use it
         /// </summary>
@@ -249,6 +341,7 @@ namespace DTInventory
             ClearPreview();
 
             inventoryManager = FindObjectOfType<InventoryManager>();
+            InitializeScrollableGrid();
 
             //Inventory grid initialization
             for (int i = 0; i < column; i++)
@@ -256,7 +349,7 @@ namespace DTInventory
                 for (int j = 0; j < row; j++)
                 {
                     var _cell = Instantiate(cell);
-                    _cell.rectTransform.SetParent(transform);
+                    _cell.rectTransform.SetParent(gridContent, false);
                     _cell.rectTransform.sizeDelta = new Vector2(cellSize - padding, cellSize - padding);
                     _cell.rectTransform.anchoredPosition = new Vector2(((cellSize * i) + padding), ((-cellSize * j) + padding));
                     _cell.rectTransform.localScale = new Vector2(1, 1);
@@ -378,7 +471,7 @@ namespace DTInventory
                 var _InventoryItem = Instantiate(cell).gameObject.AddComponent<InventoryItem>();
                 var _InventoryItemImage = _InventoryItem.GetComponent<Image>();
 
-                _InventoryItemImage.rectTransform.SetParent(transform);
+                _InventoryItemImage.rectTransform.SetParent(gridContent, false);
                 _InventoryItemImage.rectTransform.sizeDelta = new Vector2(cellSize * item.width - padding, cellSize * item.height - padding);
                 _InventoryItemImage.rectTransform.anchoredPosition = _slot.GetComponent<RectTransform>().anchoredPosition;
                 _InventoryItemImage.color = Color.white;
@@ -708,17 +801,53 @@ namespace DTInventory
         /// <param name="width">Required width to check</param>
         /// <param name="height">Required height to check</param>
         /// <returns></returns>
-        public GridSlot CheckFreeSpaceForAllSlots(int width, int height)
+        private bool AddInventoryRow()
         {
-            foreach (var slot in slots)
+            if (cell == null || slots == null || column <= 0)
+                return false;
+
+            int newRow = row;
+            for (int x = 0; x < column; x++)
             {
-                if (CheckFreeSpaceAtSlot(slot.x, slot.y, width, height) && slot.isLoot == false && slot.equipmentPanel == null)
-                {
-                    return CheckFreeSpaceAtSlot(slot.x, slot.y, width, height);
-                }
+                var cellImage = Instantiate(cell);
+                cellImage.rectTransform.SetParent(gridContent, false);
+                cellImage.rectTransform.sizeDelta = new Vector2(cellSize - padding, cellSize - padding);
+                cellImage.rectTransform.anchoredPosition = new Vector2(cellSize * x + padding, -cellSize * newRow + padding);
+                cellImage.rectTransform.localScale = Vector3.one;
+                cellImage.name = x + "," + newRow;
+
+                var slot = cellImage.GetComponent<GridSlot>();
+                slot.free = true;
+                slot.image.color = normalCellColor;
+                slot.x = x;
+                slot.y = newRow;
+                slots.Add(slot);
             }
 
-            return null;
+            row++;
+            UpdateGridContentSize();
+            return true;
+        }
+
+        public GridSlot CheckFreeSpaceForAllSlots(int width, int height)
+        {
+            if (width <= 0 || height <= 0 || width > column)
+                return null;
+
+            while (true)
+            {
+                foreach (var slot in slots)
+                {
+                    if (!slot.isLoot && slot.equipmentPanel == null
+                        && CheckFreeSpaceAtSlot(slot.x, slot.y, width, height))
+                    {
+                        return FindSlotByIndex(slot.x, slot.y);
+                    }
+                }
+
+                if (!AddInventoryRow())
+                    return null;
+            }
         }
 
         /// <summary>

@@ -148,7 +148,7 @@ namespace DTInventory
         //Here we processing the moment when we start dragging an item
         public void OnBeginDrag(PointerEventData eventData)
         {
-            transform.SetParent(inventory.transform);
+            transform.SetParent(inventory.transform, true);
             
             //Turn of raycastTarget to prevent unexpected raycasts
             image.raycastTarget = false;
