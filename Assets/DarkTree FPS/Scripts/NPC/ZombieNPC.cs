@@ -113,6 +113,10 @@ namespace DarkTreeFPS
                 rigidbody.isKinematic = true;
             }
 
+            // Keep the controller Rigidbody dynamic; OnAnimatorMove writes its velocity.
+            m_Rigidbody = GetComponent<Rigidbody>();
+            m_Rigidbody.isKinematic = false;
+
             GetComponent<Collider>().enabled = true;
 
             //Controller variables
