@@ -257,70 +257,111 @@ namespace DTInventory
                 return;
             }
 
+            var hoveredObject = eventDataRaycast.gameObject;
+            var hoveredItem = hoveredObject != null ? hoveredObject.GetComponent<InventoryItem>() : null;
+
             if (item != null
-                && item.stackable == true
-                && eventDataRaycast.gameObject.GetComponent<InventoryItem>() != null
-                && eventDataRaycast.gameObject.GetComponent<InventoryItem>().item.id == item.id
-                && eventDataRaycast.gameObject.GetComponent<InventoryItem>().item.stackSize + item.stackSize <= item.maxStackSize)
+                && item.stackable
+                && hoveredItem != null
+                && hoveredItem.item.id == item.id
+                && hoveredItem.item.stackSize + item.stackSize <= item.maxStackSize)
             {
                 soundManager.Click();
-                eventDataRaycast.gameObject.GetComponent<InventoryItem>().item.stackSize += item.stackSize;
+                hoveredItem.item.stackSize += item.stackSize;
                 inventory.RemoveItem(this);
                 Destroy(gameObject);
                 return;
             }
 
-            if (eventDataRaycast.gameObject != null && eventDataRaycast.gameObject.GetComponent<GridSlot>())
+            var targetSlot = hoveredObject != null ? hoveredObject.GetComponent<GridSlot>() : null;
+            if (targetSlot != null)
             {
-                var slot = eventData.pointerCurrentRaycast.gameObject.GetComponent<GridSlot>();
+                var shiftedAxes = CalculateShiftedAxes();
 
-                if (inventory.CheckFreeSpaceAtSlot(CalculateShiftedAxes().x, CalculateShiftedAxes().y, width, height) && slot.free && slot.equipmentPanel == null)
+                if (targetSlot.equipmentPanel != null)
                 {
-                    transform.SetParent(slot.transform.parent);
+                    if (inventory.CheckFreeSpaceAtSlot(shiftedAxes.x, shiftedAxes.y, width, height)
+                        && targetSlot.free
+                        && targetSlot.equipmentPanel.allowedItemType == item.type)
+                    {
+                        PlaceAtSlot(targetSlot, shiftedAxes.x, shiftedAxes.y);
+                        targetSlot.equipmentPanel.equipedItem = item;
+                        myEquipmentPanel = targetSlot.equipmentPanel;
+                        return;
+                    }
 
-                    finalPosition = inventory.FindSlotByIndex(CalculateShiftedAxes().x, CalculateShiftedAxes().y).GetComponent<RectTransform>().anchoredPosition;
-
-                    x = CalculateShiftedAxes().x;
-                    y = CalculateShiftedAxes().y;
-
-                    if (myEquipmentPanel != null)
-                        myEquipmentPanel = null;
-
-                    inventory.MarkSlots(CalculateShiftedAxes().x, CalculateShiftedAxes().y, width, height, false);
+                    RestorePreviousPosition();
+                    return;
                 }
-                else if (inventory.CheckFreeSpaceAtSlot(CalculateShiftedAxes().x, CalculateShiftedAxes().y, width, height) && slot.free && slot.equipmentPanel != null && slot.equipmentPanel.allowedItemType == item.type)
+
+                PlaceInNearestGridSlot(shiftedAxes.x, shiftedAxes.y, targetSlot.isLoot);
+                return;
+            }
+
+            if (hoveredItem != null)
+            {
+                var itemSlot = inventory.FindSlotByIndex(hoveredItem.x, hoveredItem.y);
+                if (itemSlot != null && itemSlot.equipmentPanel == null)
                 {
-                    transform.SetParent(slot.transform.parent);
-
-                    finalPosition = inventory.FindSlotByIndex(CalculateShiftedAxes().x, CalculateShiftedAxes().y).GetComponent<RectTransform>().anchoredPosition;
-
-                    x = CalculateShiftedAxes().x;
-                    y = CalculateShiftedAxes().y;
-
-                    slot.equipmentPanel.equipedItem = item;
-                    myEquipmentPanel = slot.equipmentPanel;
-
-                    inventory.MarkSlots(CalculateShiftedAxes().x, CalculateShiftedAxes().y, width, height, false);
-                }
-                else
-                {
-                    finalPosition = lastPosition;
-                    if(myEquipmentPanel != null)
-                        myEquipmentPanel.equipedItem = item;
-
-                    inventory.MarkSlots(x, y, width, height, false);
+                    PlaceInNearestGridSlot(hoveredItem.x, hoveredItem.y, itemSlot.isLoot);
+                    return;
                 }
             }
-            else
-            {
-                finalPosition = lastPosition;
-                if (myEquipmentPanel != null)
-                    myEquipmentPanel.equipedItem = item;
 
-                inventory.MarkSlots(x, y, width, height, false);
-            }
+            RestorePreviousPosition();
         }
-        
+
+        private void PlaceInNearestGridSlot(int desiredX, int desiredY, bool isLoot)
+        {
+            GridSlot nearestSlot = null;
+            var nearestDistance = int.MaxValue;
+
+            foreach (var candidate in inventory.slots)
+            {
+                if (candidate.isLoot != isLoot || candidate.equipmentPanel != null)
+                    continue;
+
+                if (!inventory.CheckFreeSpaceAtSlot(candidate.x, candidate.y, width, height))
+                    continue;
+
+                var distance = Mathf.Abs(candidate.x - desiredX) + Mathf.Abs(candidate.y - desiredY);
+                if (distance < nearestDistance)
+                {
+                    nearestDistance = distance;
+                    nearestSlot = candidate;
+                }
+            }
+
+            if (nearestSlot != null)
+                PlaceAtSlot(nearestSlot, nearestSlot.x, nearestSlot.y);
+            else
+                RestorePreviousPosition();
+        }
+
+        private void PlaceAtSlot(GridSlot slot, int slotX, int slotY)
+        {
+            transform.SetParent(slot.transform.parent);
+
+            var destinationSlot = inventory.FindSlotByIndex(slotX, slotY);
+            finalPosition = destinationSlot.GetComponent<RectTransform>().anchoredPosition;
+            x = slotX;
+            y = slotY;
+
+            if (myEquipmentPanel != null)
+                myEquipmentPanel = null;
+
+            inventory.MarkSlots(slotX, slotY, width, height, false);
+        }
+
+        private void RestorePreviousPosition()
+        {
+            finalPosition = lastPosition;
+            if (myEquipmentPanel != null)
+                myEquipmentPanel.equipedItem = item;
+
+            inventory.MarkSlots(x, y, width, height, false);
+        }
+
         public Vector2Int CalculateShiftedAxes()
         {
             int mod_x = 0, mod_y = 0;
