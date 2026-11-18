@@ -143,6 +143,8 @@ namespace DarkTreeFPS
         public bool isThrowingGrenade = false;
 
         private Animator weaponHolderAnimator;
+        private bool hasUseBoolParameter;
+        private bool loggedAimShotFallback;
 
         private GameObject UIScopeGameobject;
         private float scopeTimer;
@@ -281,6 +283,11 @@ namespace DarkTreeFPS
             ricochetSounds = hitFXManager.ricochetSounds;
 
             weaponHolderAnimator = GameObject.Find("Weapon holder").GetComponent<Animator>();
+            hasUseBoolParameter = HasAnimatorParameter(animator, "Use", AnimatorControllerParameterType.Bool);
+#if UNITY_EDITOR
+            if (!hasUseBoolParameter)
+                Debug.Log("[Weapon animator] " + weaponName + " controller has no bool 'Use'; guarded access enabled.", this);
+#endif
 
             inventory = FindObjectOfType<DTInventory.DTInventory>();
             input = FindObjectOfType<InputManager>();
@@ -386,7 +393,7 @@ namespace DarkTreeFPS
             }
             UpdateAmmoText();
 
-            if(animator.GetBool("Use") != false)
+            if (hasUseBoolParameter)
                 animator.SetBool("Use", UseObjects.useState);
             
             FireModeSwitch();
@@ -881,12 +888,40 @@ namespace DarkTreeFPS
             }
         }
 
+        internal static bool HasAnimatorParameter(Animator targetAnimator, string parameterName,
+            AnimatorControllerParameterType parameterType)
+        {
+            if (targetAnimator == null || targetAnimator.runtimeAnimatorController == null)
+                return false;
+
+            foreach (var parameter in targetAnimator.parameters)
+            {
+                if (parameter.name == parameterName && parameter.type == parameterType)
+                    return true;
+            }
+
+            return false;
+        }
+
         private void PlayFX()
         {
-                //animator.Play("Shot");
+                // AimShot belongs to the shared weapon-holder controller only when that state exists.
                 if (setAim && weaponType != WeaponType.Pistol && weaponType != WeaponType.Shotgun)
                 {
-                    weaponHolderAnimator.Play("AimShot");
+                    int aimShotHash = Animator.StringToHash("AimShot");
+                    if (weaponHolderAnimator != null && weaponHolderAnimator.HasState(0, aimShotHash))
+                        weaponHolderAnimator.Play(aimShotHash, 0);
+                    else if (animator != null && animator.HasState(0, Animator.StringToHash("Shot")))
+                    {
+                        animator.Play("Shot");
+#if UNITY_EDITOR
+                        if (!loggedAimShotFallback)
+                        {
+                            Debug.Log("[Weapon animator] " + weaponName + " shared Weapon holder has no AimShot state; using weapon Shot state.", this);
+                            loggedAimShotFallback = true;
+                        }
+#endif
+                    }
                 }
                 else
                 {

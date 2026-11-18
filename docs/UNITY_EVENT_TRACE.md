@@ -43,6 +43,21 @@
 - В этом же capture обнаружен независимый повторяющийся warning оружия `Parameter 'Use' does not exist` (2795 записей), источник — `DarkTreeFPS.Weapon.Update()` / `Assets/DarkTree FPS/Scripts/Weapon/Weapon.cs:389`, вызов `Animator.GetBool("Use")`. Это не ошибка anomaly test, но шумит в Console и требует отдельной проверки соответствующего Animator Controller/параметра.
 - Тест подтверждает входной эффект зоны, но не проверяет выход/повторный вход как ожидаемый дизайн, защиту от повторного урона при нахождении в collider, баланс или другие механики аномалии.
 
+## Оружейные Animator: Shotgun и Barrett
+
+- Общая причина Shotgun warning: `Weapon.Update()` читает/пишет bool `Use`, но `Shotgun New.controller` этого параметра не имеет. В `Weapon.cs` кэшируется наличие bool-параметра после получения Animator; доступ выполняется только при его наличии. Для Barrett bool `Use` остаётся синхронизирован с `UseObjects.useState`.
+- Barrett при прицеливании ранее вызывал `weaponHolderAnimator.Play("AimShot")`, которого нет в общем `Weapon holder.controller`; Unity затем показывала `State could not be found` и `Invalid Layer Index '-1'`. Теперь перед вызовом проверяется наличие state. Если его нет, используется локальный state `Shot` контроллера Barrett, если он существует.
+- `WeaponAnimatorCompatibilityDebugTest` на `Dummy` проверяет scene instances и соответствующие контракты без активации оружия/смены Animator state.
+- Runtime-регрессия после компиляции: сначала ожидать `[Weapon animator test] PASS`; затем выстрелить Shotgun и убедиться, что больше нет `Parameter 'Use' does not exist`; прицелиться и выстрелить Barrett — проверить отсутствие `State could not be found` и `Invalid Layer Index '-1'`. Фактические логи после Play Mode разбирать в `Temp/UnityTestLogs/unity-console.log`.
+- Если Barrett fallback сработал, будет одно сообщение `[Weapon animator] Barrett shared Weapon holder has no AimShot state; using weapon Shot state.`; это ожидаемая диагностика, не ошибка.
+- Исправление статически проверено по controllers и исходникам; **runtime capture от 2026-11-18 23:55 (+0300) подтверждает `TEST START` → `PASS` → `TEST END: PASS`** для Shotgun/Barret/Weapon holder. В этом capture нет Warning/Error/Exception, включая прежние `Use`, `AimShot` и Layer warnings.
+
+## Смерть игрока от зомби: runtime-проверка
+
+- `PlayerStats.PlayerDeath()` выключает `FPSController`, а также `CharacterController` корневого Player, чтобы физическая капсула не удерживала игрока/камеру; при `RespawnPlayer()` оба компонента включаются обратно.
+- `WeaponManager.HideWeaponOnDeath()` больше не обращается к отсутствующему Animator layer 1: контроллер `Weapon holder` имеет только layer 0, где проверяется и запускается `Hide`.
+- **Пользователь подтвердил проверку в Unity Play Mode: «смерть работает» после этих изменений.** Это фактическое подтверждение пользователя; свежий файловый capture в этой проверке не содержит маркера `PlayerDeath`, поэтому не заявляем отдельную log-trace проверку перехода.
+
 ## Файловый capture в проекте
 
 Текущий тестовый capture: `Assets/Tests/UnityConsoleFileCapture.cs`. Runtime log: `Temp/UnityTestLogs/unity-console.log` (путь в Unity настраивается относительно `Application.dataPath`). Тестовый вывод: `Assets/Tests/RadioactiveZoneDebugTest.cs`. Общий рабочий workflow проекта: `.agents/skills/darktree-unity-project/SKILL.md`.

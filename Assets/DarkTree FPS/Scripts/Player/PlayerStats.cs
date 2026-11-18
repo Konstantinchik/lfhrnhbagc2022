@@ -90,6 +90,7 @@ namespace DarkTreeFPS
         #region utility objects
         private Rigidbody playerRigidbody;
         private FPSController controller;
+        private CharacterController characterController;
         private CapsuleCollider playerCollider;
         private Sway sway;
 
@@ -112,6 +113,7 @@ namespace DarkTreeFPS
 
             playerRigidbody = GetComponent<Rigidbody>();
             controller = GetComponent<FPSController>();
+            characterController = GetComponent<CharacterController>();
             playerCollider = GetComponent<CapsuleCollider>();
             weaponManager = FindObjectOfType<WeaponManager>();
             sway = FindObjectOfType<Sway>();
@@ -257,6 +259,8 @@ namespace DarkTreeFPS
                 sway.enabled = false;
                 var leanController = FindObjectOfType<Lean>().enabled = false;
                 controller.enabled = false;
+                if (characterController != null)
+                    characterController.enabled = false;
                 
                 if(playerBody != null && !InputManager.useMobileInput)
                 {
@@ -299,6 +303,8 @@ namespace DarkTreeFPS
             sway.enabled = true;
             var leanController = FindObjectOfType<Lean>().enabled = true;
             controller.enabled = true;
+            if (characterController != null)
+                characterController.enabled = true;
             
             if (playerBody != null && !InputManager.useMobileInput)
             {

@@ -50,6 +50,12 @@ internal static class AttachRadioactiveZoneTestToDummy
             sceneChanged = true;
         }
 
+        if (dummy.GetComponent<WeaponAnimatorCompatibilityDebugTest>() == null)
+        {
+            Undo.AddComponent<WeaponAnimatorCompatibilityDebugTest>(dummy);
+            sceneChanged = true;
+        }
+
         if (sceneChanged)
             EditorSceneManager.MarkSceneDirty(scene);
 

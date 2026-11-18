@@ -256,14 +256,14 @@ namespace DarkTreeFPS
 
         public void HideWeaponOnDeath()
         {
-            weaponHolderAnimator.SetLayerWeight(1, 0);
-            weaponHolderAnimator.Play("Hide");
+            if (weaponHolderAnimator != null && weaponHolderAnimator.HasState(0, Animator.StringToHash("Hide")))
+                weaponHolderAnimator.Play("Hide", 0);
         }
 
         public void UnhideWeaponOnRespawn()
         {
-            weaponHolderAnimator.SetLayerWeight(1, 1);
-            weaponHolderAnimator.Play("Hide");
+            if (weaponHolderAnimator != null && weaponHolderAnimator.HasState(0, Animator.StringToHash("Hide")))
+                weaponHolderAnimator.Play("Hide", 0);
         }
 
         private bool ChangingWeapon;

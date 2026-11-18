@@ -4,6 +4,16 @@
 
 ## Записи
 
+### Подготовлен фикс: Shotgun/Barrett Animator warnings
+
+- **Shotgun:** общий `Weapon.Update()` больше не вызывает `GetBool/SetBool("Use")`, если Animator не содержит bool-параметр. Shotgun New.controller параметра не имеет; Barrett controller имеет.
+- **Barrett:** перед `Weapon holder.Play("AimShot")` проверяется, существует ли state. Если нет — fallback на `Shot` собственного Animator оружия; Editor log выводится один раз.
+- **Регрессионный harness:** `WeaponAnimatorCompatibilityDebugTest` добавлен на постоянный `Dummy`; он проверит scene controller metadata без переключения оружия.
+- **Runtime capture 2026-11-18 23:55 (+0300):** `[Weapon animator test] TEST START` → `PASS` → `TEST END: PASS`. Проверка подтвердила отсутствие у Shotgun bool `Use`, наличие bool `Use` и state `Shot` у Barret, а также отсутствие `AimShot` в общем Weapon holder controller. В capture нет Warning/Error/Exception; старые `TEST FAIL` и `Animator is not playing an AnimatorController` не повторились.
+- При предыдущем прогоне, завершённом в `23:41:56`, зафиксирован отдельный не блокирующий Play Mode exit warning: `Game object with animator is inactive`, stack trace указывает на `Weapon.OnDisable()` во время выхода из Play Mode; он отсутствует в capture `23:55`.
+- **Death flow:** PlayerStats теперь выключает `CharacterController` на время смерти и восстанавливает его при respawn; `WeaponManager` больше не вызывает `SetLayerWeight(1)` у однослойного Animator. Пользователь подтвердил в Unity Play Mode: смерть от зомби работает.
+- Описание сценариев и ограничений: `docs/UNITY_EVENT_TRACE.md`.
+
 ### 2026-11-18 22:51 (+0300) — Anomaly zone, runtime trace
 
 - **Источник:** `Temp/UnityTestLogs/unity-console.log` и переданный пользователем снимок Console.
