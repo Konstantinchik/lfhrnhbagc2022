@@ -90,7 +90,7 @@
 - После сообщения о завершённом прогоне агент читает файл напрямую, классифицирует ошибки/warnings и сопоставляет записи сценария по времени. Отсутствующий файл, маркер или event trace означает «не подтверждено».
 - Не логировать каждый кадр; использовать переходы/результаты событий и избегать побочных эффектов harness. Не удалять и не перепрофилировать `Dummy` без прямого указания пользователя.
 
-Подтверждённый radiation-прогон записан в [`docs/UNITY_EVENT_TRACE.md`](./UNITY_EVENT_TRACE.md) и [`docs/UNITY_CONSOLE_LOG.md`](./UNITY_CONSOLE_LOG.md).
+Подтверждённый radiation-прогон записан в [`docs/UNITY_EVENT_TRACE.md`](./UNITY_EVENT_TRACE.md) и [`docs/UNITY_CONSOLE_LOG.md`](./UNITY_CONSOLE_LOG.md). Для аномальной зоны подготовлен event-driven harness; runtime подтверждение будет только после `[Anomaly test] PASS` в новом capture.
 
 ## Источники
 

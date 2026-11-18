@@ -32,6 +32,17 @@
 - В проверенном прогоне `RadZone (2)` нанесла 1 HP за тик (80→79, 79→78, 78→77), а `RadZone (3)` — 2, 2 и 1 HP (77→75→73→72).
 - Этот след подтверждает фактическое применение урона в зафиксированном прогоне. Он сам по себе не задаёт ожидаемый баланс, частоту тиков или точность звуковой границы зоны.
 
+## Аномальная зона: runtime-проверка
+
+- `Assets/DarkTree FPS/Scripts/Anomaly.cs` обрабатывает вход коллайдера с тегом `Player`: запускает `CameraKick`, вызывает `PlayerStats.ApplyDamage(20)` и проигрывает `anomalyEnterReaction`.
+- На постоянном `Dummy` находится `AnomalyZoneDebugTest`. Он подписывается на наблюдение фактического `OnTriggerEnter` и не подделывает коллизии/не наносит тестовый урон.
+- Войти в любую активную Anomaly-зону игровым Player в Play Mode. В файловом capture ожидаются `[Anomaly] TriggerEnter` и `[Anomaly test] PASS` с зоной, коллайдером, HP до/после, найденным Animator state и назначенным AudioClip.
+- При завершении Play Mode без входа ожидается `[Anomaly test] NO TRIGGER OBSERVED`; это означает незавершённый сценарий, а не PASS.
+- **Runtime-прогон подтверждён по capture от 2026-11-18:** первый вход `Anomaly (4)` обработан как ожидалось: HP `77→57`, урон `20`, `CameraKick=True`, `reactionAudio=True`; harness вывел `PASS` и `TEST END: PASS`.
+- В том же Play Mode произошёл повторный вход в ту же зону: HP `57→37`, урон `20`; событие подтверждает, что каждый новый `OnTriggerEnter` повторно наносит полный урон. Harness отмечает первый вход как PASS, повторный триггер был виден в runtime trace.
+- В этом же capture обнаружен независимый повторяющийся warning оружия `Parameter 'Use' does not exist` (2795 записей), источник — `DarkTreeFPS.Weapon.Update()` / `Assets/DarkTree FPS/Scripts/Weapon/Weapon.cs:389`, вызов `Animator.GetBool("Use")`. Это не ошибка anomaly test, но шумит в Console и требует отдельной проверки соответствующего Animator Controller/параметра.
+- Тест подтверждает входной эффект зоны, но не проверяет выход/повторный вход как ожидаемый дизайн, защиту от повторного урона при нахождении в collider, баланс или другие механики аномалии.
+
 ## Файловый capture в проекте
 
 Текущий тестовый capture: `Assets/Tests/UnityConsoleFileCapture.cs`. Runtime log: `Temp/UnityTestLogs/unity-console.log` (путь в Unity настраивается относительно `Application.dataPath`). Тестовый вывод: `Assets/Tests/RadioactiveZoneDebugTest.cs`. Общий рабочий workflow проекта: `.agents/skills/darktree-unity-project/SKILL.md`.

@@ -4,6 +4,16 @@
 
 ## Записи
 
+### 2026-11-18 22:51 (+0300) — Anomaly zone, runtime trace
+
+- **Источник:** `Temp/UnityTestLogs/unity-console.log` и переданный пользователем снимок Console.
+- **Ожидание первого входа:** реальный `OnTriggerEnter` игрока; ровно 20 HP урона; Animator state `CameraKick` доступен; reaction AudioClip назначен; harness сообщает PASS.
+- **Фактический результат:** `22:51:07.212` `Anomaly (4)`, collider/player `Player`, HP `77→57`, урон `20`, `cameraKickState=True`, `reactionAudio=True`; в `22:51:07.214` harness вывел `PASS`, в `22:51:07.216` — `TEST END: PASS`. **Первый вход соответствует ожиданию.**
+- **Повторный вход:** в `22:51:14.388` тот же `Anomaly (4)` снова сработал, HP `57→37`, ещё `20` урона, Animator/audio indicators true. Это ожидаемо по текущей реализации `OnTriggerEnter` на каждый новый вход, но дизайн повторного урона после выхода/повторного входа отдельно не согласован.
+- **Сопутствующие события:** до аномалии `RadZone (3)` трижды нанесла по 1 HP: `80→79→78→77`.
+- **Сопутствующие warnings:** 2795 повторов `Parameter 'Use' does not exist`; stack trace ведёт к `DarkTreeFPS.Weapon.Update()` в `Assets/DarkTree FPS/Scripts/Weapon/Weapon.cs:389`, вызов `Animator.GetBool("Use")`. Это отдельная проблема оружейного Animator, не ошибка аномального триггера. Одно дополнительное `Game object with animator is inactive` связано с `Weapon.OnDisable()` при выходе из Play Mode.
+- **Вывод:** ожидаемый первый вход подтверждён, повторное повторное срабатывание тоже фактически подтверждено; дальнейшее поведение по повторному входу требует решения о желаемом дизайне.
+
 ### Протокол фактической трассировки событий игровых механик
 
 - Для runtime-проверок сохранять все Unity Console log types, timestamps и stack traces в `Temp/UnityTestLogs/unity-console.log` через `Application.logMessageReceived`; подробные требования и формат события находятся в [`docs/UNITY_EVENT_TRACE.md`](./UNITY_EVENT_TRACE.md).

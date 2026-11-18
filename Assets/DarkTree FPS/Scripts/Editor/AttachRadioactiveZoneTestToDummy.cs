@@ -37,14 +37,24 @@ internal static class AttachRadioactiveZoneTestToDummy
             return;
 
         attached = true;
+        bool sceneChanged = false;
         if (dummy.GetComponent<RadioactiveZoneDebugTest>() == null)
         {
             Undo.AddComponent<RadioactiveZoneDebugTest>(dummy);
-            EditorSceneManager.MarkSceneDirty(scene);
+            sceneChanged = true;
         }
 
+        if (dummy.GetComponent<AnomalyZoneDebugTest>() == null)
+        {
+            Undo.AddComponent<AnomalyZoneDebugTest>(dummy);
+            sceneChanged = true;
+        }
+
+        if (sceneChanged)
+            EditorSceneManager.MarkSceneDirty(scene);
+
         Selection.activeGameObject = dummy;
-        Debug.Log("[RadioactiveZone test] Attached test harness to active scene GameObject 'Dummy'. The scene has not been saved.", dummy);
+        Debug.Log("[Gameplay tests] Attached persistent test harnesses to active scene GameObject 'Dummy'. The scene has not been saved.", dummy);
         EditorApplication.hierarchyChanged -= TryAttach;
         EditorSceneManager.sceneOpened -= OnSceneOpened;
     }
