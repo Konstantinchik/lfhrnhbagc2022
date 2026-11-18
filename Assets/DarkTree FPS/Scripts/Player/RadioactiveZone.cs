@@ -29,19 +29,62 @@ namespace DarkTreeFPS
 
         public float timeToDamage;
         private float timer;
+        private float accumulatedDamage;
 
         private void Update()
         {
             if (player == null)
             {
-                player = GameObject.FindGameObjectWithTag("Player").transform;
+                var playerObject = GameObject.FindGameObjectWithTag("Player");
+                if (playerObject == null)
+                    return;
+
+                player = playerObject.transform;
             }
-            
-                if(Time.time  > timer + timeToDamage)
-                {
-                    playerStats.health -= (int)damage;
-                    timer = Time.time;
-                }
+
+            if (playerStats == null)
+                playerStats = FindObjectOfType<PlayerStats>();
+            if (playerStats == null)
+                return;
+
+            if (timeToDamage <= 0)
+                return;
+
+            if (Time.time > timer + timeToDamage)
+            {
+                ApplyDamageTick(playerStats);
+                timer = Time.time;
+            }
+        }
+
+        private void ApplyDamageTick(PlayerStats target)
+        {
+            if (target == null)
+                return;
+
+            int damageToApply = CalculateDamageToApply(damage, ref accumulatedDamage);
+            if (damageToApply <= 0)
+                return;
+
+            int previousHealth = target.health;
+            target.health -= damageToApply;
+#if UNITY_EDITOR
+            Debug.Log("[Radiation] " + gameObject.name + " applied " + damageToApply + " HP damage (" + previousHealth + " -> " + target.health + ").", this);
+#endif
+        }
+
+        internal static int CalculateDamageToApply(float damage, ref float accumulatedDamage)
+        {
+            if (damage <= 0)
+                return 0;
+
+            accumulatedDamage += damage;
+            int damageToApply = Mathf.FloorToInt(accumulatedDamage);
+            if (damageToApply <= 0)
+                return 0;
+
+            accumulatedDamage -= damageToApply;
+            return damageToApply;
         }
 
         private void LateUpdate()
