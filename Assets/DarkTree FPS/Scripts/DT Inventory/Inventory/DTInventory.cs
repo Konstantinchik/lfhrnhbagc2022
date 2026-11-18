@@ -143,6 +143,8 @@ namespace DTInventory
 
         private RectTransform gridContent;
         private ScrollRect gridScrollRect;
+        private RectTransform lootContent;
+        private ScrollRect lootScrollRect;
 
         private void InitializeScrollableGrid()
         {
@@ -227,10 +229,101 @@ namespace DTInventory
             scrollbarTransform.SetSiblingIndex(1);
         }
 
+        private void InitializeScrollableLootGrid()
+        {
+            if (lootPanel == null)
+                return;
+
+            var viewportTransform = lootPanel.Find("Loot Viewport");
+            if (viewportTransform == null)
+            {
+                var viewportObject = new GameObject("Loot Viewport", typeof(RectTransform), typeof(Image), typeof(Mask));
+                viewportTransform = viewportObject.transform;
+                viewportTransform.SetParent(lootPanel, false);
+
+                var viewportRect = viewportObject.GetComponent<RectTransform>();
+                viewportRect.anchorMin = Vector2.zero;
+                viewportRect.anchorMax = Vector2.one;
+                viewportRect.offsetMin = Vector2.zero;
+                viewportRect.offsetMax = Vector2.zero;
+
+                var viewportImage = viewportObject.GetComponent<Image>();
+                viewportImage.color = Color.white;
+                viewportImage.raycastTarget = true;
+                viewportObject.GetComponent<Mask>().showMaskGraphic = false;
+            }
+
+            var contentTransform = viewportTransform.Find("Loot Content");
+            if (contentTransform == null)
+            {
+                var contentObject = new GameObject("Loot Content", typeof(RectTransform));
+                contentTransform = contentObject.transform;
+                contentTransform.SetParent(viewportTransform, false);
+            }
+
+            lootContent = contentTransform.GetComponent<RectTransform>();
+            lootContent.anchorMin = new Vector2(0, 1);
+            lootContent.anchorMax = new Vector2(0, 1);
+            lootContent.pivot = new Vector2(0, 1);
+            lootContent.anchoredPosition = Vector2.zero;
+            UpdateLootContentSize();
+
+            lootScrollRect = lootPanel.GetComponent<ScrollRect>();
+            if (lootScrollRect == null)
+                lootScrollRect = lootPanel.gameObject.AddComponent<ScrollRect>();
+            lootScrollRect.viewport = viewportTransform.GetComponent<RectTransform>();
+            lootScrollRect.content = lootContent;
+            lootScrollRect.horizontal = false;
+            lootScrollRect.vertical = true;
+            lootScrollRect.movementType = ScrollRect.MovementType.Clamped;
+
+            var scrollbarTransform = lootPanel.Find("Loot Vertical Scrollbar");
+            if (scrollbarTransform == null)
+            {
+                var scrollbarObject = new GameObject("Loot Vertical Scrollbar", typeof(RectTransform), typeof(Image), typeof(Scrollbar));
+                scrollbarTransform = scrollbarObject.transform;
+                scrollbarTransform.SetParent(lootPanel, false);
+
+                var scrollbarRect = scrollbarObject.GetComponent<RectTransform>();
+                scrollbarRect.anchorMin = new Vector2(1, 1);
+                scrollbarRect.anchorMax = new Vector2(1, 1);
+                scrollbarRect.pivot = new Vector2(0, 1);
+                scrollbarRect.anchoredPosition = new Vector2(2, 0);
+                scrollbarRect.sizeDelta = new Vector2(12, lootPanel.rect.height);
+                scrollbarObject.GetComponent<Image>().color = new Color(0, 0, 0, 0.35f);
+
+                var handleObject = new GameObject("Handle", typeof(RectTransform), typeof(Image));
+                handleObject.transform.SetParent(scrollbarTransform, false);
+                var handleRect = handleObject.GetComponent<RectTransform>();
+                handleRect.anchorMin = Vector2.zero;
+                handleRect.anchorMax = Vector2.one;
+                handleRect.offsetMin = new Vector2(2, 2);
+                handleRect.offsetMax = new Vector2(-2, -2);
+                var handleImage = handleObject.GetComponent<Image>();
+                handleImage.color = Color.white;
+
+                var scrollbar = scrollbarObject.GetComponent<Scrollbar>();
+                scrollbar.direction = Scrollbar.Direction.BottomToTop;
+                scrollbar.handleRect = handleRect;
+                scrollbar.targetGraphic = handleImage;
+            }
+
+            lootScrollRect.verticalScrollbar = scrollbarTransform.GetComponent<Scrollbar>();
+            lootScrollRect.verticalScrollbarVisibility = ScrollRect.ScrollbarVisibility.AutoHide;
+            viewportTransform.SetAsFirstSibling();
+            scrollbarTransform.SetAsLastSibling();
+        }
+
         private void UpdateGridContentSize()
         {
             if (gridContent != null)
                 gridContent.sizeDelta = new Vector2(column * cellSize, Mathf.Max(row, 1) * cellSize);
+        }
+
+        private void UpdateLootContentSize()
+        {
+            if (lootContent != null)
+                lootContent.sizeDelta = new Vector2(Mathf.Max(lootRow, 1) * cellSize, Mathf.Max(lootColumn, 1) * cellSize);
         }
 
         /// <summary>
@@ -342,6 +435,7 @@ namespace DTInventory
 
             inventoryManager = FindObjectOfType<InventoryManager>();
             InitializeScrollableGrid();
+            InitializeScrollableLootGrid();
 
             //Inventory grid initialization
             for (int i = 0; i < column; i++)
@@ -372,7 +466,7 @@ namespace DTInventory
                     for (int j = 0; j < lootColumn; j++)
                     {
                         var _cell = Instantiate(cell);
-                        _cell.rectTransform.SetParent(lootPanel);
+                        _cell.rectTransform.SetParent(lootContent, false);
                         _cell.rectTransform.sizeDelta = new Vector2(cellSize - padding, cellSize - padding);
                         _cell.rectTransform.anchoredPosition = new Vector2(((cellSize * i) + padding), ((-cellSize * j) + padding));
                         _cell.rectTransform.localScale = new Vector2(1, 1);
@@ -530,7 +624,23 @@ namespace DTInventory
         /// <returns></returns>
         public bool AddItem(Item item, int x, int y)
         {
-            if (CheckFreeSpaceForAllSlots(item.width, item.height))
+            var targetSlot = FindSlotByIndex(x, y);
+            if (targetSlot == null && x >= 9000 && x < 9000 + lootRow && y >= 9000)
+            {
+                targetSlot = EnsureLootSlotExists(x - 9000, y - 9000, item.height);
+            }
+            else if (targetSlot == null && x >= 0 && x < column && y >= 0)
+            {
+                while (y + item.height > row)
+                {
+                    if (!AddInventoryRow())
+                        break;
+                }
+
+                targetSlot = FindSlotByIndex(x, y);
+            }
+
+            if (targetSlot != null && CheckFreeSpaceAtSlot(x, y, item.width, item.height))
             {
                 var _InventoryItem = Instantiate(cell).gameObject.AddComponent<InventoryItem>();
                 var _InventoryItemImage = _InventoryItem.GetComponent<Image>();
@@ -958,15 +1068,63 @@ namespace DTInventory
         /// <param name="width"></param>
         /// <param name="height"></param>
         /// <returns></returns>
-        public GridSlot CheckFreeSpaceForAllSlotsLoot(int width, int height)
+        private bool AddLootRow()
         {
-            foreach (var slot in slots)
+            if (cell == null || slots == null || lootRow <= 0)
+                return false;
+
+            int newRow = lootColumn;
+            for (int x = 0; x < lootRow; x++)
             {
-                if (CheckFreeSpaceAtSlot(slot.x, slot.y, width, height) && slot.equipmentPanel == null && slot.isLoot == true)
-                    return CheckFreeSpaceAtSlot(slot.x, slot.y, width, height);
+                var cellImage = Instantiate(cell);
+                cellImage.rectTransform.SetParent(lootContent, false);
+                cellImage.rectTransform.sizeDelta = new Vector2(cellSize - padding, cellSize - padding);
+                cellImage.rectTransform.anchoredPosition = new Vector2(cellSize * x + padding, -cellSize * newRow + padding);
+                cellImage.rectTransform.localScale = Vector3.one;
+                cellImage.name = x + "," + newRow + " Loot";
+
+                var slot = cellImage.GetComponent<GridSlot>();
+                slot.free = true;
+                slot.image.color = normalCellColor;
+                slot.x = x + 9000;
+                slot.y = newRow + 9000;
+                slot.isLoot = true;
+                slots.Add(slot);
             }
 
-            return null;
+            lootColumn++;
+            UpdateLootContentSize();
+            return true;
+        }
+
+        private GridSlot EnsureLootSlotExists(int x, int y, int itemHeight)
+        {
+            while (y + itemHeight > lootColumn)
+            {
+                if (!AddLootRow())
+                    return null;
+            }
+
+            return FindSlotByIndex(x + 9000, y + 9000);
+        }
+
+        public GridSlot CheckFreeSpaceForAllSlotsLoot(int width, int height)
+        {
+            if (width <= 0 || height <= 0 || width > lootRow)
+                return null;
+
+            while (true)
+            {
+                foreach (var slot in slots)
+                {
+                    if (slot.isLoot && slot.equipmentPanel == null
+                        && CheckFreeSpaceAtSlot(slot.x, slot.y, width, height))
+                        return slot;
+                }
+
+                if (!AddLootRow())
+                    return null;
+            }
         }
 
         /// <summary>

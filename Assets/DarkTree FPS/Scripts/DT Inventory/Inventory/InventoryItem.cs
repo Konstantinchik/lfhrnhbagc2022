@@ -332,6 +332,9 @@ namespace DTInventory
                 }
             }
 
+            if (nearestSlot == null && isLoot)
+                nearestSlot = inventory.CheckFreeSpaceForAllSlotsLoot(width, height);
+
             if (nearestSlot != null)
                 PlaceAtSlot(nearestSlot, nearestSlot.x, nearestSlot.y);
             else
