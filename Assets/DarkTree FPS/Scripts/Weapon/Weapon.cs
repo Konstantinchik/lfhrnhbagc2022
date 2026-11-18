@@ -58,8 +58,7 @@ namespace DarkTreeFPS
         private GameObject shell;
         private int shellPoolSize;
         private float shellForce;
-        private Text ammoText;
-        private Text weaponNameText;
+        private WeaponHUDPresenter weaponHUD;
 
         //Stats
         [HideInInspector]
@@ -247,9 +246,7 @@ namespace DarkTreeFPS
             weaponCameraNormalFov = weaponCamera.fieldOfView;
 
             weaponManager = FindObjectOfType<WeaponManager>();
-            
-            ammoText = GameObject.Find("AmmoText").GetComponent<Text>();
-            weaponNameText = GameObject.Find("WeaponText").GetComponent<Text>();
+            weaponHUD = weaponManager != null ? weaponManager.weaponHUD : null;
             
             sway = FindObjectOfType<Sway>();
 
@@ -446,7 +443,8 @@ namespace DarkTreeFPS
                         //Playing reticle animation
                         ReticleAnimation.shot = true;
 
-                        coverList.NotifyNPCAboutShot(transform.position, weaponShotNPCDetectionDistance);
+                        if (coverList != null)
+                            coverList.NotifyNPCAboutShot(transform.position, weaponShotNPCDetectionDistance);
 
                         controller.recoil = new Vector2(Random.Range(recoil.x, recoil.x * 2), Random.Range(recoil.y, recoil.y * 2));
 
@@ -1074,8 +1072,8 @@ namespace DarkTreeFPS
 
         private void UpdateAmmoText()
         {
-            if (!ammoText.enabled)
-                ammoText.enabled = true;
+            if (weaponHUD == null)
+                return;
 
             char mode = new char();
 
@@ -1088,10 +1086,11 @@ namespace DarkTreeFPS
                 mode = 'A';
             }
 
-            weaponNameText.text = weaponName;
-            if(weaponType != WeaponType.Grenade)
-                if(currentItem != null)
-            ammoText.text = string.Format("{0}|{1}\n Mode:{2}", currentItem.stackSize, CalculateTotalAmmo(), mode);
+            var ammunition = string.Empty;
+            if (weaponType != WeaponType.Grenade && currentItem != null)
+                ammunition = string.Format("{0}|{1}\n Mode:{2}", currentItem.stackSize, CalculateTotalAmmo(), mode);
+
+            weaponHUD.Show(weaponName, ammunition);
         }
 
         public int CalculateTotalAmmo()
@@ -1156,10 +1155,8 @@ namespace DarkTreeFPS
             canShot = true;
             reloading = false;
 
-            if (weaponNameText)
-                weaponNameText.text = "";
-            if (ammoText)
-                ammoText.text = "";
+            if (weaponHUD != null)
+                weaponHUD.Clear();
         }
     }
 }

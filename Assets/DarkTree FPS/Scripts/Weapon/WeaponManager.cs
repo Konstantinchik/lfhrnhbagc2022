@@ -29,6 +29,7 @@ namespace DarkTreeFPS
         private DTInventory.DTInventory inventory;
 
         public GameObject scopeUI;
+        public WeaponHUDPresenter weaponHUD;
 
         //[HideInInspector]
         public Weapon activeWeapon;

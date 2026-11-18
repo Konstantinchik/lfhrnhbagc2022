@@ -20,17 +20,23 @@ namespace DarkTreeFPS
         public bool isGod = false;
         [Tooltip("Player's health")]
         public int health = 100;
-        [Tooltip("UI element to draw health as number")]
+        [Tooltip("Legacy UI reference. Prefer PlayerStatsPresenter.")]
         public Text healthUIText;
-        [Tooltip("UI element to draw health as slider")]
+        [Tooltip("Legacy UI reference. Prefer PlayerStatsPresenter.")]
         public Slider healthUISlider;
+        [Tooltip("Legacy UI reference. Prefer PlayerStatsPresenter.")]
         public Slider staminaUISlider;
+        [Tooltip("Legacy UI reference. Prefer PlayerStatsPresenter.")]
         public Text staminaUIText;
         
+        [Tooltip("Legacy UI reference. Prefer PlayerStatsPresenter.")]
         public Slider hungerSlider;
+        [Tooltip("Legacy UI reference. Prefer PlayerStatsPresenter.")]
         public Text hungerUIText;
 
+        [Tooltip("Legacy UI reference. Prefer PlayerStatsPresenter.")]
         public Slider thirstSlider;
+        [Tooltip("Legacy UI reference. Prefer PlayerStatsPresenter.")]
         public Text thirstUIText;
 
         public float minFailingDamage = 10;
@@ -90,6 +96,7 @@ namespace DarkTreeFPS
         private Transform cameraHolder;
 
         private WeaponManager weaponManager;
+        private PlayerStatsPresenter statsPresenter;
         //Don't create any rigidbody here
         private Rigidbody rigidbody_temp;
         #endregion
@@ -101,6 +108,7 @@ namespace DarkTreeFPS
             isPlayerDead = false;
 
             audioSource = GetComponent<AudioSource>();
+            statsPresenter = GetComponent<PlayerStatsPresenter>();
 
             playerRigidbody = GetComponent<Rigidbody>();
             controller = GetComponent<FPSController>();
@@ -308,6 +316,13 @@ namespace DarkTreeFPS
 
         void DrawHealthStats()
         {
+            if (statsPresenter != null)
+            {
+                statsPresenter.Present(health, stamina, satiety, hydration);
+                return;
+            }
+
+            // Legacy fallback for scenes/prefabs not yet migrated to PlayerStatsPresenter.
             if (healthUIText != null)
                 healthUIText.text = health.ToString();
 

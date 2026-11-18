@@ -33627,6 +33627,7 @@ GameObject:
   - component: {fileID: 4408074918694870970}
   - component: {fileID: 4408074918694870965}
   - component: {fileID: 4408074918694870966}
+  - component: {fileID: 9080857648622308648}
   m_Layer: 2
   m_Name: Player
   m_TagString: Player
@@ -43266,6 +43267,7 @@ GameObject:
   - component: {fileID: 4408074919733227440}
   - component: {fileID: 4408074919733227446}
   - component: {fileID: 4408074919733227447}
+  - component: {fileID: 9080857648622308649}
   m_Layer: 0
   m_Name: WeaponManager&HitFXManager
   m_TagString: Untagged
@@ -43308,6 +43310,7 @@ MonoBehaviour:
   weaponHolderAnimator: {fileID: 4408074918601557276}
   tempGameobject: {fileID: 0}
   scopeUI: {fileID: 5996040439110585058}
+  weaponHUD: {fileID: 9080857648622308649}
   activeWeapon: {fileID: 0}
   grenadeItemName: Grenade
 --- !u!114 &4408074919733227446
@@ -70715,3 +70718,39 @@ Transform:
     type: 3}
   m_PrefabInstance: {fileID: 5996040439253831914}
   m_PrefabAsset: {fileID: 0}
+
+--- !u!114 &9080857648622308648
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4408074918694870964}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7c8b68a39f7c4b5c9d36a9a10df2a741, type: 3}
+  m_Name: PlayerStatsPresenter
+  m_EditorClassIdentifier: DarkTreeFPS.PlayerStatsPresenter
+  source: {fileID: 4408074918694870969}
+  healthText: {fileID: 4408074919976120233}
+  healthSlider: {fileID: 4408074918437087317}
+  staminaText: {fileID: 5996040439611482583}
+  staminaSlider: {fileID: 5996040439060286825}
+  hungerText: {fileID: 4408074918452059563}
+  hungerSlider: {fileID: 4408074919417134840}
+  thirstText: {fileID: 4408074918835935784}
+  thirstSlider: {fileID: 4408074919332658382}
+--- !u!114 &9080857648622308649
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4408074919733227441}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b482a6de8bd54ca6a1d79f7ac4d31051, type: 3}
+  m_Name: WeaponHUDPresenter
+  m_EditorClassIdentifier: DarkTreeFPS.WeaponHUDPresenter
+  ammoText: {fileID: 4408074919645259742}
+  weaponNameText: {fileID: 4408074920198112095}
