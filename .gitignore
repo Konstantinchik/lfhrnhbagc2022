@@ -118,3 +118,6 @@ blender-scripts/*.pyc
 # Claude Code local MCP config
 .claude/mcp_config.json
 
+# Unity Editor scene template preferences
+/ProjectSettings/SceneTemplateSettings.json
+
