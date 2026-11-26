@@ -223,6 +223,10 @@ namespace DarkTreeFPS
 
         public void FightHit()
         {
+            //The player is destroyed while a save is being loaded after death
+            if (player == null)
+                return;
+
             if (Vector3.Distance(transform.position, player.transform.position) < attackDistance)
             {
                 if(Vector3.Angle(transform.position, player.transform.position) < 20)

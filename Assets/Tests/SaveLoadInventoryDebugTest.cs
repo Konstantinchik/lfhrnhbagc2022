@@ -50,6 +50,24 @@ namespace DarkTreeFPS.Tests
 
             loadsChecked++;
             var problems = new List<string>();
+
+            // 0. Exactly one living, controllable player exists (also after loading from the death state).
+            int players = FindObjectsOfType<PlayerStats>().Length;
+            if (players != 1)
+                problems.Add("expected 1 player after load, found " + players);
+            if (PlayerStats.isPlayerDead)
+                problems.Add("player is still marked dead after load");
+            if (DTInventory.SaveData.instance == null)
+                problems.Add("SaveData.instance (registered player) is missing");
+
+            var controller = FindObjectOfType<FPSController>();
+            if (controller == null || !controller.enabled)
+                problems.Add("FPSController is missing or disabled");
+            if (Camera.main == null)
+                problems.Add("no main camera");
+            if (FindObjectsOfType<AudioListener>().Length != 1)
+                problems.Add("expected 1 AudioListener, found " + FindObjectsOfType<AudioListener>().Length);
+
             var inventory = FindObjectOfType<DTInventory.DTInventory>();
 
             if (inventory == null)

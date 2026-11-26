@@ -32,35 +32,96 @@ namespace DTInventory
                 Destroy(this.gameObject);
         }
 
+        private bool loadInProgress;
+
+        private static readonly string[] saveFileSuffixes =
+            { "_playerData", "_charactersData", "_inventoryData", "_itemsLevelData", "_lootboxData" };
+
         private void Update()
         {
-            if (loadDataTrigger)
-            {
-                print("Attemp to load player save");
-                Load();
-
-                CoverList.sceneActiveNPC = new List<NPC>();
-                CoverList.sceneActiveNPC.Clear();
-
-                loadDataTrigger = false;
-            }
-
             if (Input.GetKeyDown(saveKeyCode))
             {
                 Save();
             }
 
-            if (Input.GetKeyDown(loadKeyCode))
+            if (Input.GetKeyDown(loadKeyCode) && !loadInProgress)
             {
-                SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
-                loadDataTrigger = true;
+                string missingFile = FindMissingSaveFile(SceneManager.GetActiveScene().name);
 
-                if (PlayerStats.isPlayerDead)
+                if (missingFile != null)
                 {
-                    Destroy(GameObject.Find("Camera Holder"));  
-                    Destroy(instance.gameObject);
-                    instance = Instantiate(gamePrefab); 
+                    //Nothing to load: keep the current game running instead of reloading the scene
+                    Debug.LogWarning("Load skipped: no save for scene '" + SceneManager.GetActiveScene().name + "' (missing file " + missingFile + "). Press " + saveKeyCode + " to save first.");
+                    return;
                 }
+
+                StartCoroutine(LoadRoutine());
+            }
+        }
+
+        /// <summary>
+        /// Returns the path of the first save file that does not exist for the scene, or null when the save is complete
+        /// </summary>
+        public static string FindMissingSaveFile(string sceneName)
+        {
+            foreach (var suffix in saveFileSuffixes)
+            {
+                string path = Application.persistentDataPath + "/" + sceneName + suffix;
+
+                if (!File.Exists(path))
+                    return path;
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Reloads the active scene and applies the save once the scene has settled
+        /// </summary>
+        private System.Collections.IEnumerator LoadRoutine()
+        {
+            loadInProgress = true;
+            loadDataTrigger = true;
+
+            if (PlayerStats.isPlayerDead)
+            {
+                //A dead player is broken apart (the camera holder is detached), so it can't be reused.
+                //Remove it and let the reloaded scene register its own fresh player.
+                Destroy(GameObject.Find("Camera Holder"));
+
+                if (instance != null)
+                    Destroy(instance);
+
+                instance = null;
+            }
+
+            SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+
+            //Frame 1: the scene is loaded and its objects run Start; a duplicate player destroys itself.
+            //Frame 2: the duplicate is gone, so the lookups in Load() can only find the real player.
+            yield return null;
+            yield return null;
+
+            if (instance == null && gamePrefab != null)
+            {
+                //The scene has no player of its own
+                instance = Instantiate(gamePrefab);
+                yield return null;
+                yield return null;
+            }
+
+            try
+            {
+                print("Attemp to load player save");
+                Load();
+
+                CoverList.sceneActiveNPC = new List<NPC>();
+            }
+            finally
+            {
+                //Always release the trigger: otherwise a failed load would block scene persistence and further loads
+                loadDataTrigger = false;
+                loadInProgress = false;
             }
         }
 
@@ -445,6 +506,14 @@ namespace DTInventory
                 weaponManager = FindObjectOfType<WeaponManager>();
 
             //Player data
+
+            string missingFile = FindMissingSaveFile(SceneManager.GetActiveScene().name);
+
+            if (missingFile != null)
+            {
+                Debug.LogWarning("Load cancelled: save file not found: " + missingFile);
+                return;
+            }
 
             if (JsonUtility.FromJson<PlayerStatsData>(File.ReadAllText(Application.persistentDataPath + "/" + SceneManager.GetActiveScene().name + "_playerData")) == null)
             {

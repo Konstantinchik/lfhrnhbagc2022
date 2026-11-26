@@ -8,7 +8,7 @@ namespace DTInventory {
     {
         private void Start()
         {
-            if (SaveData.instance == null)
+            if (SaveData.instance == null || SaveData.instance == gameObject)
             {
                 SaveData.instance = gameObject;
             }
