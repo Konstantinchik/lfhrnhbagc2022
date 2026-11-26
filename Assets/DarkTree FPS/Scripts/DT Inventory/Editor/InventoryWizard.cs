@@ -23,8 +23,6 @@ namespace DTInventory
         private Sprite CellImage;
         private Sprite InventoryBackground;
 
-        private bool HasEquipmentSlots = false;
-        private int EquipmentSlotsNumber;
 
         private Color normalCellColor = Color.white, hoveredCellColor = Color.grey, blockedCellCover = Color.red;
         private Color inventoryBackgroundColor = Color.white;

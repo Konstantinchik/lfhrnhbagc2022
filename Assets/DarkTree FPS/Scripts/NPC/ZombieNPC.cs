@@ -41,10 +41,8 @@ namespace DarkTreeFPS
         CapsuleCollider capsule;
         List<ZombieNPC> friendsList;
 
-        private GameObject target;
         private Transform player;
 
-        float timer;
 
         [HideInInspector]
         public bool isWorried = false;

@@ -20,8 +20,6 @@ namespace DarkTreeFPS
         public float leanPositionShift = 0.1f;
 
         private float leanCurrentAngle = 0f;
-        private float leanCurrentPosition;
-        Quaternion leanRotation;
 
         Vector3 velocity = Vector3.zero;
 

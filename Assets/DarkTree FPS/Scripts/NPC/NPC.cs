@@ -494,7 +494,6 @@ namespace DarkTreeFPS
         private Cover cover;
         [HideInInspector]
         public Vector3 lookPosition;
-        private bool randomTimeGenerated = false;
 
         bool idle = true;
 
@@ -618,7 +617,6 @@ namespace DarkTreeFPS
 
         float GetRandomTimeForAction(int max)
         {
-            randomTimeGenerated = true;
             return Random.Range(Time.time, Time.time + max);
         }
 

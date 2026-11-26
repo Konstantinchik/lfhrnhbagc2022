@@ -22,7 +22,6 @@ namespace DarkTreeFPS
         private Transform player;
         public Collider playerCollider;
 
-        private SphereCollider rangeCollider;
         
         public int targetFraction;
 

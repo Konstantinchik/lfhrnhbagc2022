@@ -10,8 +10,6 @@ public class CoverList : MonoBehaviour
 
     public static List<NPC> sceneActiveNPC;
     
-    private float timer;
-    private float npcListRefreshTimer = 0.2f;
     
     private void Awake()
     {

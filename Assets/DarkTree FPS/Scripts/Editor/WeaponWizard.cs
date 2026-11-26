@@ -24,7 +24,6 @@ namespace DarkTreeFPS
         AnimationClip shot2Animation;
         AnimationClip shot3Animation;
 
-        bool useAnimation;
         bool useExtraAnimation;
 
         int toolbarInt = 0;
@@ -36,12 +35,7 @@ namespace DarkTreeFPS
 
         Vector2 scrollValue;
 
-        GameObject weaponPickup;
-        GameObject weaponAmmoPickup;
 
-        string weaponNameToPickup;
-        int weaponPickupAmmoCount;
-        int ammoPickupAmmoCount;
 
         [MenuItem("DarkTree FPS/Weapon wizard")]
         static void Init()
