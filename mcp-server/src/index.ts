@@ -5,7 +5,7 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
-import axios, { AxiosInstance } from 'axios';
+import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
 import dotenv from 'dotenv';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -18,6 +18,9 @@ dotenv.config({ path: path.resolve(serverDirectory, '..', '.env') });
 const HEALTH_TIMEOUT_MS = 2000;
 const COMMAND_TIMEOUT_MS = 30000;
 const ANIMATION_TIMEOUT_MS = 120000;
+// How long to keep retrying while Unity reloads scripts and the bridge restarts
+const RETRY_WINDOW_MS = 45000;
+const RETRY_DELAY_MS = 1000;
 
 // Unity Bridge client
 class UnityBridgeClient {
@@ -39,45 +42,105 @@ class UnityBridgeClient {
     });
   }
 
-  async isConnected(): Promise<boolean> {
+  async health(): Promise<any | null> {
     try {
       const response = await this.http.get(`/health`, { timeout: HEALTH_TIMEOUT_MS });
-      return response.status === 200;
+      return response.status === 200 ? response.data : null;
     } catch {
-      return false;
+      return null;
     }
   }
 
-  async executeCommand(command: string, args?: Record<string, any>): Promise<any> {
-    const response = await this.http.post(`/execute`, {
-      command,
-      args: args || {}
-    });
-    return response.data;
+  /**
+   * Sends a request and retries while the bridge is restarting.
+   *
+   * Unity stops the bridge for a few seconds on every script reload (compilation, entering
+   * Play Mode). Two cases are safe to retry because the command is known not to have run:
+   * the connection was refused, or the bridge answered 503 (it cancels the queued command).
+   * A connection dropped mid-request is not retried: the command may already have executed.
+   */
+  private async request(config: AxiosRequestConfig): Promise<UnityResponse> {
+    const deadline = Date.now() + RETRY_WINDOW_MS;
+
+    for (;;) {
+      try {
+        const response = await this.http.request(config);
+        if (response.status === 503 && Date.now() < deadline) {
+          await delay(RETRY_DELAY_MS);
+          continue;
+        }
+        return { status: response.status, data: response.data };
+      } catch (error) {
+        const code = axios.isAxiosError(error) ? error.code : undefined;
+        if (code === 'ECONNREFUSED' && Date.now() < deadline) {
+          await delay(RETRY_DELAY_MS);
+          continue;
+        }
+        if (code === 'ECONNREFUSED') {
+          throw new Error(
+            `Unity MCP Bridge is not reachable at ${this.baseUrl}. ` +
+            'Open the project in Unity Editor and run Window -> MCP Bridge -> Start Server.'
+          );
+        }
+        if (code === 'ECONNRESET' || code === 'ECONNABORTED') {
+          throw new Error(
+            `Connection to Unity MCP Bridge was lost during the request (${code}). ` +
+            'Unity may be reloading scripts; the command may or may not have run. Check the editor state before retrying.'
+          );
+        }
+        throw error;
+      }
+    }
   }
 
-  async getSceneInfo(): Promise<any> {
-    const response = await this.http.get(`/scene`);
-    return response.data;
+  executeCommand(command: string, args?: Record<string, any>): Promise<UnityResponse> {
+    return this.request({ method: 'post', url: `/execute`, data: { command, args: args || {} } });
   }
 
-  async importAsset(path: string, options?: Record<string, any>): Promise<any> {
-    const response = await this.http.post(`/import`, {
-      path,
-      options: options || {}
-    });
-    return response.data;
+  getSceneInfo(): Promise<UnityResponse> {
+    return this.request({ method: 'get', url: `/scene` });
   }
 
-  async retargetAnimation(options: {
+  importAsset(path: string, options?: Record<string, any>): Promise<UnityResponse> {
+    return this.request({ method: 'post', url: `/import`, data: { path, options: options || {} } });
+  }
+
+  retargetAnimation(options: {
     sourceAnimationPath: string;
     sourceSkeletonType: string;
     targetSkeletonType: string;
     outputPath: string;
-  }): Promise<any> {
-    const response = await this.http.post(`/animation/retarget`, options, { timeout: ANIMATION_TIMEOUT_MS });
-    return response.data;
+  }): Promise<UnityResponse> {
+    return this.request({
+      method: 'post',
+      url: `/animation/retarget`,
+      data: options,
+      timeout: ANIMATION_TIMEOUT_MS,
+    });
   }
+}
+
+interface UnityResponse {
+  status: number;
+  data: any;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Formats a bridge response as an MCP tool result; HTTP errors are reported as tool errors.
+function toolResult(response: UnityResponse) {
+  const failed = response.status >= 400 || response.data?.success === false;
+  return {
+    content: [
+      {
+        type: 'text' as const,
+        text: JSON.stringify(response.data, null, 2),
+      },
+    ],
+    ...(failed ? { isError: true } : {}),
+  };
 }
 
 const unityClient = new UnityBridgeClient();
@@ -234,7 +297,7 @@ const tools = [
   },
   {
     name: 'unity_console_logs',
-    description: 'Get recent Unity Console logs for debugging',
+    description: 'Get recent Unity Console entries, newest first, with their level (error/warning/info), source file and line. The result also reports total error/warning/info counts for the whole console.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -247,6 +310,11 @@ const tools = [
           type: 'string',
           description: 'Filter logs by type: "all", "error", "warning", "info" (default: "all")',
           default: 'all',
+        },
+        stackTrace: {
+          type: 'boolean',
+          description: 'Include the stack trace of each entry (default: false)',
+          default: false,
         },
       },
     },
@@ -268,7 +336,7 @@ const tools = [
   },
   {
     name: 'unity_compilation_check',
-    description: 'Check Unity script compilation status and get recent compile errors',
+    description: 'Check Unity script compilation status. Returns whether the last compilation failed and lists the compile errors currently in the console.',
     inputSchema: {
       type: 'object',
       properties: {},
@@ -288,16 +356,22 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   try {
     switch (name) {
       case 'unity_check_connection': {
-        const connected = await unityClient.isConnected();
+        const health = await unityClient.health();
+        const connected = health !== null;
         return {
           content: [
             {
               type: 'text',
               text: JSON.stringify({
                 connected,
-                status: connected ? 'Unity Editor MCP Bridge is active' : 'Unity Editor not responding',
+                status: !connected
+                  ? 'Unity Editor not responding'
+                  : health.mainThreadResponsive === false
+                    ? 'Unity Editor MCP Bridge is active, but the editor is busy (compiling, importing or unfocused)'
+                    : 'Unity Editor MCP Bridge is active',
                 bridge_url: process.env.UNITY_EDITOR_HOST || 'localhost',
                 port: process.env.UNITY_EDITOR_PORT || '7777',
+                editor: health,
               }, null, 2),
             },
           ],
@@ -307,26 +381,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case 'unity_execute_command': {
         const { command, args: cmdArgs } = args as { command: string; args?: Record<string, any> };
         const result = await unityClient.executeCommand(command, cmdArgs);
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify(result, null, 2),
-            },
-          ],
-        };
+        return toolResult(result);
       }
 
       case 'unity_get_scene_info': {
         const sceneInfo = await unityClient.getSceneInfo();
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify(sceneInfo, null, 2),
-            },
-          ],
-        };
+        return toolResult(sceneInfo);
       }
 
       case 'unity_debug_log': {
@@ -335,14 +395,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           message,
           level: level || 'log',
         });
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify(result, null, 2),
-            },
-          ],
-        };
+        return toolResult(result);
       }
 
       case 'unity_create_gameobject': {
@@ -352,27 +405,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           type: type || 'Empty',
           parent,
         });
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify(result, null, 2),
-            },
-          ],
-        };
+        return toolResult(result);
       }
 
       case 'unity_import_asset': {
         const { path, destination } = args as { path: string; destination?: string };
         const result = await unityClient.importAsset(path, { destination });
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify(result, null, 2),
-            },
-          ],
-        };
+        return toolResult(result);
       }
 
       case 'unity_animation_retarget': {
@@ -383,43 +422,23 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           outputPath: string;
         };
         const result = await unityClient.retargetAnimation(retargetArgs);
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify(result, null, 2),
-            },
-          ],
-        };
+        return toolResult(result);
       }
 
       case 'unity_get_project_structure': {
         const { depth } = args as { depth?: number };
         const result = await unityClient.executeCommand('GetProjectStructure', { depth: depth || 2 });
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify(result, null, 2),
-            },
-          ],
-        };
+        return toolResult(result);
       }
 
       case 'unity_console_logs': {
-        const { count, filter } = args as { count?: number; filter?: string };
+        const { count, filter, stackTrace } = args as { count?: number; filter?: string; stackTrace?: boolean };
         const result = await unityClient.executeCommand('GetConsoleLogs', {
           count: count || 50,
           filter: filter || 'all',
+          stackTrace: stackTrace === true,
         });
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify(result, null, 2),
-            },
-          ],
-        };
+        return toolResult(result);
       }
 
       case 'unity_play_mode': {
@@ -429,26 +448,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           : action === 'exit' ? 'ExitPlayMode'
           : 'IsPlayMode'
         );
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify(result, null, 2),
-            },
-          ],
-        };
+        return toolResult(result);
       }
 
       case 'unity_compilation_check': {
         const result = await unityClient.executeCommand('GetCompilationErrors');
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify(result, null, 2),
-            },
-          ],
-        };
+        return toolResult(result);
       }
 
       default:

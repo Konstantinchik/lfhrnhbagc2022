@@ -275,150 +275,211 @@ namespace DarkTreeFPS.MCPBridge
             };
         }
 
+        // Биты LogEntry.mode (UnityEditor.ConsoleWindow.Mode, Unity 2022)
+        private const int ModeError = 1 << 0;
+        private const int ModeAssert = 1 << 1;
+        private const int ModeFatal = 1 << 4;
+        private const int ModeAssetImportError = 1 << 6;
+        private const int ModeAssetImportWarning = 1 << 7;
+        private const int ModeScriptingError = 1 << 8;
+        private const int ModeScriptingWarning = 1 << 9;
+        private const int ModeScriptCompileError = 1 << 11;
+        private const int ModeScriptCompileWarning = 1 << 12;
+        private const int ModeScriptingException = 1 << 17;
+        private const int ModeGraphCompileError = 1 << 20;
+        private const int ModeScriptingAssertion = 1 << 21;
+
+        private const int ErrorModeMask = ModeError | ModeAssert | ModeFatal | ModeAssetImportError |
+            ModeScriptingError | ModeScriptCompileError | ModeScriptingException | ModeGraphCompileError | ModeScriptingAssertion;
+        private const int WarningModeMask = ModeAssetImportWarning | ModeScriptingWarning | ModeScriptCompileWarning;
+
+        private static string LevelFromMode(int mode)
+        {
+            if ((mode & ErrorModeMask) != 0) return "error";
+            if ((mode & WarningModeMask) != 0) return "warning";
+            return "info";
+        }
+
+        private class ConsoleEntry
+        {
+            public string level;
+            public string message;
+            public string stackTrace;
+            public string file;
+            public int line;
+            public int mode;
+        }
+
+        private class ConsoleSnapshot
+        {
+            public bool available;
+            public string unavailableReason;
+            public int total;
+            public int errorCount, warningCount, infoCount;
+            public readonly List<ConsoleEntry> entries = new List<ConsoleEntry>();
+        }
+
+        /// <summary>
+        /// Читает записи Console от новых к старым через внутренний UnityEditor.LogEntries.
+        /// Список соответствует тому, что показывает окно Console (с учётом его фильтров и Collapse).
+        /// </summary>
+        private static ConsoleSnapshot ReadConsole(int maxEntries, Func<ConsoleEntry, bool> predicate)
+        {
+            var snapshot = new ConsoleSnapshot();
+
+            Assembly editorAssembly = typeof(EditorWindow).Assembly;
+            Type logEntriesType = editorAssembly.GetType("UnityEditor.LogEntries");
+            Type logEntryType = editorAssembly.GetType("UnityEditor.LogEntry");
+            const BindingFlags StaticFlags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static;
+            const BindingFlags InstanceFlags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
+
+            MethodInfo startGetting = logEntriesType?.GetMethod("StartGettingEntries", StaticFlags);
+            MethodInfo endGetting = logEntriesType?.GetMethod("EndGettingEntries", StaticFlags);
+            MethodInfo getEntryInternal = logEntriesType?.GetMethod("GetEntryInternal", StaticFlags);
+            MethodInfo getCount = logEntriesType?.GetMethod("GetCount", StaticFlags);
+            MethodInfo getCountsByType = logEntriesType?.GetMethod("GetCountsByType", StaticFlags);
+
+            if (logEntryType == null || startGetting == null || endGetting == null || getEntryInternal == null)
+            {
+                snapshot.unavailableReason = "Console entry API (UnityEditor.LogEntries) is not available in this Unity version";
+                return snapshot;
+            }
+
+            snapshot.available = true;
+
+            FieldInfo messageField = logEntryType.GetField("message", InstanceFlags) ?? logEntryType.GetField("condition", InstanceFlags);
+            FieldInfo modeField = logEntryType.GetField("mode", InstanceFlags);
+            FieldInfo fileField = logEntryType.GetField("file", InstanceFlags);
+            FieldInfo lineField = logEntryType.GetField("line", InstanceFlags);
+            FieldInfo callstackStartField = logEntryType.GetField("callstackTextStartUTF16", InstanceFlags);
+
+            if (getCountsByType != null)
+            {
+                try
+                {
+                    object[] counts = { 0, 0, 0 };
+                    getCountsByType.Invoke(null, counts);
+                    snapshot.errorCount = (int)counts[0];
+                    snapshot.warningCount = (int)counts[1];
+                    snapshot.infoCount = (int)counts[2];
+                }
+                catch { }
+            }
+
+            // StartGettingEntries возвращает число строк; GetCount - запасной вариант
+            int total = 0;
+            object started = startGetting.Invoke(null, null);
+            try
+            {
+                if (started is int startedCount)
+                    total = startedCount;
+                else if (getCount != null)
+                    total = (int)getCount.Invoke(null, null);
+
+                snapshot.total = total;
+
+                // Новые записи в конце списка - идём с конца
+                for (int row = total - 1; row >= 0 && snapshot.entries.Count < maxEntries; row--)
+                {
+                    object entry = Activator.CreateInstance(logEntryType);
+                    object[] entryArgs = { row, entry };
+                    object got = getEntryInternal.Invoke(null, entryArgs);
+                    if (got is bool ok && !ok)
+                        continue;
+
+                    entry = entryArgs[1];
+
+                    string text = messageField?.GetValue(entry) as string ?? string.Empty;
+                    int mode = modeField != null ? Convert.ToInt32(modeField.GetValue(entry)) : 0;
+
+                    // Текст записи: сообщение, затем стек вызовов
+                    int split = callstackStartField != null ? Convert.ToInt32(callstackStartField.GetValue(entry)) : 0;
+                    if (split <= 0 || split > text.Length)
+                    {
+                        split = text.IndexOf('\n');
+                        if (split < 0) split = text.Length;
+                    }
+
+                    var item = new ConsoleEntry
+                    {
+                        level = LevelFromMode(mode),
+                        message = text.Substring(0, split).TrimEnd('\r', '\n'),
+                        stackTrace = text.Substring(split).Trim('\r', '\n'),
+                        file = fileField?.GetValue(entry) as string,
+                        line = lineField != null ? Convert.ToInt32(lineField.GetValue(entry)) : 0,
+                        mode = mode
+                    };
+
+                    if (predicate == null || predicate(item))
+                        snapshot.entries.Add(item);
+                }
+            }
+            finally
+            {
+                endGetting.Invoke(null, null);
+            }
+
+            return snapshot;
+        }
+
         private static object GetConsoleLogs(JObject args)
         {
-            int count = args?["count"]?.ToObject<int>() ?? 50;
-            string filter = args?["filter"]?.ToString()?.ToLower() ?? "all";
-
-            var logs = new List<object>();
-            int errorCount = 0, warningCount = 0, logCount = 0;
+            int count = Mathf.Clamp(args?["count"]?.ToObject<int>() ?? 50, 1, 1000);
+            string filter = args?["filter"]?.ToString()?.ToLowerInvariant() ?? "all";
+            if (filter == "log") filter = "info";
+            bool includeStackTrace = args?["stackTrace"]?.ToObject<bool>() == true;
+            bool debug = args?["debug"]?.ToObject<bool>() == true;
 
             try
             {
-                Assembly editorAssembly = typeof(EditorWindow).Assembly;
-                Type logEntriesType = editorAssembly.GetType("UnityEditor.LogEntries");
-                Type logEntryType = editorAssembly.GetType("UnityEditor.LogEntry");
+                var snapshot = ReadConsole(count, e => filter == "all" || filter == e.level);
 
-                if (logEntriesType == null || logEntryType == null)
+                if (!snapshot.available)
                 {
                     return new
                     {
                         success = false,
-                        error = "LogEntries reflection not available in this Unity version",
+                        error = snapshot.unavailableReason,
                         count = 0,
-                        logs = logs
+                        logs = new List<object>()
                     };
                 }
 
-                // Надёжные счётчики (после StartGettingEntries)
-                MethodInfo getCountByMode = logEntriesType.GetMethod("GetCountByMode");
-                MethodInfo getCount = logEntriesType.GetMethod("GetCount");
-
-                // Чтение записей: GetEntryCount + GetEntryInternal (Unity 2022+)
-                MethodInfo getEntryCount = logEntriesType.GetMethod("GetEntryCount");
-                MethodInfo getEntryInternal = logEntriesType.GetMethod("GetEntryInternal", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static);
-                MethodInfo startGetting = logEntriesType.GetMethod("StartGettingEntries");
-                MethodInfo endGetting = logEntriesType.GetMethod("EndGettingEntries");
-
-                if (getEntryCount == null || getEntryInternal == null || startGetting == null || endGetting == null)
+                var logs = new List<object>();
+                foreach (var e in snapshot.entries)
                 {
-                    return new
+                    var item = new Dictionary<string, object>
                     {
-                        success = true,
-                        error = errorCount,
-                        warning = warningCount,
-                        info = logCount,
-                        message = "Console entry API not available in this Unity version",
-                        count = 0,
-                        logs = logs
+                        ["level"] = e.level,
+                        ["message"] = e.message
                     };
-                }
 
-                FieldInfo messageField = logEntryType.GetField("message") ?? logEntryType.GetField("condition");
-                FieldInfo modeField = logEntryType.GetField("mode");
-
-                // Счётчики ДО StartGettingEntries (после старта сессии они кидают исключения)
-                if (getCountByMode != null)
-                {
-                    try { errorCount = (int)getCountByMode.Invoke(null, new object[] { 0 }); } catch { }
-                    try { warningCount = (int)getCountByMode.Invoke(null, new object[] { 2 }); } catch { }
-                    try { logCount = (int)getCountByMode.Invoke(null, new object[] { 3 }); } catch { }
-                }
-
-                MethodInfo getRows = logEntriesType.GetMethod("GetRows");
-                List<int> rows = new List<int>();
-
-                // Всего записей: сумма по классам 0..2 (error/assert/warning/log)
-                int totalEntries = 0;
-                for (int m = 0; m <= 2; m++)
-                {
-                    try { totalEntries += (int)getEntryCount.Invoke(null, new object[] { m }); } catch { }
-                }
-
-                startGetting.Invoke(null, null);
-                try
-                {
-                    // Сначала пробуем GetRows, но fallback - прямые индексы 0..total-1
-                    if (getRows != null)
+                    if (!string.IsNullOrEmpty(e.file))
                     {
-                        try { getRows.Invoke(null, new object[] { rows }); } catch { }
-                    }
-                    if (rows.Count != totalEntries)
-                    {
-                        rows.Clear();
-                        for (int i = 0; i < totalEntries; i++) rows.Add(i);
+                        item["file"] = e.file;
+                        item["line"] = e.line;
                     }
 
-                    // Зондирование: счётчики по режимам 0..3 через GetEntryCount
-                    if (args?["debug"]?.ToObject<bool>() == true)
-                    {
-                        var probe = new Dictionary<string, object>();
-                        probe["GetRows"] = rows.Count;
-                        for (int m = 0; m <= 3; m++)
-                        {
-                            try { probe["GetEntryCount(" + m + ")"] = (int)getEntryCount.Invoke(null, new object[] { m }); } catch (Exception pe) { probe["GetEntryCount(" + m + ")"] = pe.Message; }
-                        }
-                        logs.Add(new { level = "probe", probe });
-                    }
+                    if (includeStackTrace && !string.IsNullOrEmpty(e.stackTrace))
+                        item["stackTrace"] = e.stackTrace;
 
-                    // Новые записи в конце списка - идём с конца по валидным строкам
-                    for (int r = rows.Count - 1; r >= 0 && logs.Count < count; r--)
-                    {
-                        object entry = Activator.CreateInstance(logEntryType);
-                        object[] entryArgs = new object[] { rows[r], entry };
-                        getEntryInternal.Invoke(null, entryArgs);
-                        entry = entryArgs[1];
+                    if (debug)
+                        item["mode"] = e.mode;
 
-                        string condition = messageField?.GetValue(entry) as string ?? string.Empty;
-                        int mode = (int)(modeField?.GetValue(entry) ?? 0);
-
-                        // Биты уровня в LogEntry.mode (определены эмпирически для Unity 2022):
-                        // error = 1<<23, warning = 1<<21, остальное - info
-                        string level;
-                        if ((mode & (1 << 23)) != 0) level = "error";
-                        else if ((mode & (1 << 21)) != 0) level = "warning";
-                        else level = "info";
-
-                        object logItem;
-                        if (args?["debug"]?.ToObject<bool>() == true)
-                        {
-                            var fields = new Dictionary<string, object>();
-                            foreach (var f in logEntryType.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
-                            {
-                                fields[f.Name] = f.GetValue(entry);
-                            }
-                            var props = new Dictionary<string, object>();
-                            foreach (var p in logEntryType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
-                            {
-                                try { props[p.Name] = p.GetValue(entry); } catch { }
-                            }
-                            logItem = new { level, message = condition, mode, fields, properties = props };
-                        }
-                        else
-                        {
-                            logItem = new { level, message = condition };
-                        }
-
-                        if (filter == "all" || filter == level)
-                        {
-                            logs.Add(logItem);
-                        }
-                    }
+                    logs.Add(item);
                 }
-                finally
+
+                return new
                 {
-                    endGetting.Invoke(null, null);
-                }
+                    success = true,
+                    // Счётчики и total относятся ко всей консоли, count - к возвращённым записям (сначала новые)
+                    error = snapshot.errorCount,
+                    warning = snapshot.warningCount,
+                    info = snapshot.infoCount,
+                    total = snapshot.total,
+                    count = logs.Count,
+                    logs = logs
+                };
             }
             catch (Exception e)
             {
@@ -428,80 +489,70 @@ namespace DarkTreeFPS.MCPBridge
                     success = false,
                     error = inner.Message,
                     stackTrace = inner.StackTrace,
-                    signatures = GetLogMethodSignatures(),
-                    count = logs.Count,
-                    logs = logs
+                    count = 0,
+                    logs = new List<object>()
                 };
             }
-
-            return new
-            {
-                success = true,
-                error = errorCount,
-                warning = warningCount,
-                info = logCount,
-                count = logs.Count,
-                logs = logs
-            };
-        }
-
-        private static List<string> GetLogMethodSignatures()
-        {
-            var signatures = new List<string>();
-            try
-            {
-                Type logEntriesType = typeof(EditorWindow).Assembly.GetType("UnityEditor.LogEntries");
-                if (logEntriesType == null) return signatures;
-
-                foreach (var name in new[] { "GetEntryInternal", "GetEntryCount", "StartGettingEntries", "GetCountsByType" })
-                {
-                    foreach (var m in logEntriesType.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static))
-                    {
-                        if (m.Name != name) continue;
-                        var ps = m.GetParameters();
-                        var sig = name + "(" + string.Join(", ", System.Array.ConvertAll(ps, p => (p.ParameterType.IsByRef ? "ref " : "") + p.ParameterType.Name)) + ")";
-                        signatures.Add(sig);
-                    }
-                }
-            }
-            catch { }
-
-            return signatures;
         }
 
         private static object GetCompilationErrors()
         {
-            int errorCount = 0, warningCount = 0;
+            var errors = new List<object>();
+            int compileErrorCount = 0, compileWarningCount = 0;
+            string readError = null;
 
             try
             {
-                Type logEntriesType = typeof(EditorWindow).Assembly.GetType("UnityEditor.LogEntries");
-                MethodInfo getCountByMode = logEntriesType?.GetMethod("GetCountByMode");
-                if (getCountByMode != null)
+                // Ошибки компиляции остаются в консоли, пока не исправлены, поэтому читаем всю консоль
+                var snapshot = ReadConsole(int.MaxValue, e =>
+                    (e.mode & (ModeScriptCompileError | ModeScriptCompileWarning)) != 0);
+
+                if (!snapshot.available)
+                    readError = snapshot.unavailableReason;
+
+                foreach (var e in snapshot.entries)
                 {
-                    errorCount = (int)getCountByMode.Invoke(null, new object[] { 0 });
-                    warningCount = (int)getCountByMode.Invoke(null, new object[] { 2 });
+                    if ((e.mode & ModeScriptCompileError) != 0)
+                    {
+                        compileErrorCount++;
+                        if (errors.Count < 50)
+                            errors.Add(new { message = e.message, file = e.file, line = e.line });
+                    }
+                    else
+                    {
+                        compileWarningCount++;
+                    }
                 }
             }
-            catch (Exception)
+            catch (Exception e)
             {
-                // счётчики недоступны - вернём только статус компиляции
+                Exception inner = (e is TargetInvocationException tie && tie.InnerException != null) ? tie.InnerException : e;
+                readError = inner.Message;
             }
+
+            // Надёжный признак от самого редактора: последняя компиляция завершилась с ошибками
+            bool compilationFailed = EditorUtility.scriptCompilationFailed;
+            bool isCompiling = EditorApplication.isCompiling;
+
+            string message;
+            if (isCompiling) message = "Compilation in progress";
+            else if (compilationFailed || compileErrorCount > 0) message = $"Compilation failed: {compileErrorCount} error(s) in console";
+            else message = "No compilation errors";
 
             return new
             {
                 success = true,
-                isCompiling = EditorApplication.isCompiling,
+                isCompiling,
                 isUpdating = EditorApplication.isUpdating,
                 isPlaying = EditorApplication.isPlaying,
-                errorCount = errorCount,
-                warningCount = warningCount,
-                message = EditorApplication.isCompiling
-                    ? "Compilation in progress"
-                    : (errorCount > 0 ? $"{errorCount} compile error(s) in console" : "No compilation errors")
+                compilationFailed,
+                errorCount = compileErrorCount,
+                warningCount = compileWarningCount,
+                errors,
+                consoleReadError = readError,
+                message
             };
         }
-
         public static string ImportAsset(string path, JObject options)
         {
             string destination = options?["destination"]?.ToString();

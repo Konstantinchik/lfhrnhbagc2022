@@ -149,7 +149,8 @@ namespace DarkTreeFPS.MCPBridge
             EditorGUILayout.HelpBox(
                 "MCP Bridge позволяет AI агентам (Claude) взаимодействовать с Unity Editor через HTTP API.\n\n" +
                 "Убедитесь, что порт не занят другими приложениями.\n" +
-                "MCP Server должен быть запущен отдельно: npm run dev в папке mcp-server/",
+                "MCP Server запускает клиент (Claude, Cline, Codex). Перед первым запуском соберите его: npm ci и npm run build в папке mcp-server/.\n" +
+                "На время перезагрузки скриптов мост останавливается на несколько секунд и поднимается сам.",
                 MessageType.Info
             );
         }
