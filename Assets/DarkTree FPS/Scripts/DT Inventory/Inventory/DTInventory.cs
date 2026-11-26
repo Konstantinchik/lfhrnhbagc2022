@@ -1023,6 +1023,64 @@ namespace DTInventory
         }
 
         /// <summary>
+        /// Empties the whole inventory: destroys every icon and the item object behind it,
+        /// frees all grid, loot and equipment slots and clears equipment panels.
+        /// Used before a save is applied, because the inventory object survives the scene reload.
+        /// </summary>
+        public void ClearAllItems()
+        {
+            if (inventoryItems != null)
+            {
+                foreach (var inventoryItem in inventoryItems)
+                {
+                    if (inventoryItem == null)
+                        continue;
+
+                    if (inventoryItem.item != null)
+                        Destroy(inventoryItem.item.gameObject);
+
+                    Destroy(inventoryItem.gameObject);
+                }
+
+                inventoryItems.Clear();
+            }
+
+            //Item objects are kept as disabled children of the inventory, so FindObjectsOfType can't see them
+            foreach (var storedItem in GetComponentsInChildren<Item>(true))
+            {
+                Destroy(storedItem.gameObject);
+            }
+
+            if (slots != null)
+            {
+                foreach (var slot in slots)
+                {
+                    if (slot == null)
+                        continue;
+
+                    slot.free = true;
+
+                    if (slot.image != null)
+                        slot.image.color = normalCellColor;
+                }
+            }
+
+            if (equipmentPanels != null)
+            {
+                foreach (var equipmentPanel in equipmentPanels)
+                {
+                    if (equipmentPanel == null)
+                        continue;
+
+                    equipmentPanel.equipedItem = null;
+                    equipmentPanel.lastItem = null;
+                }
+            }
+
+            activeLootBox = null;
+        }
+
+        /// <summary>
         /// Complex method to inspect lootboxes
         /// </summary>
         /// <param name="lootBox"></param>

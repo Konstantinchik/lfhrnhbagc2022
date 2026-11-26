@@ -56,6 +56,12 @@ internal static class AttachRadioactiveZoneTestToDummy
             sceneChanged = true;
         }
 
+        if (dummy.GetComponent<SaveLoadInventoryDebugTest>() == null)
+        {
+            Undo.AddComponent<SaveLoadInventoryDebugTest>(dummy);
+            sceneChanged = true;
+        }
+
         if (sceneChanged)
             EditorSceneManager.MarkSceneDirty(scene);
 

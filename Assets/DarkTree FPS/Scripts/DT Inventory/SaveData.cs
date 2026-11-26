@@ -546,6 +546,11 @@ namespace DTInventory
             //Inventory
             DTInventory inventory = FindObjectOfType<DTInventory>();
 
+            //The player and its inventory survive the scene reload, so the previous session state
+            //(occupied slots, item list, equipped items, weapon in hands) has to be reset before restoring
+            weaponManager.HideWeapon();
+            inventory.ClearAllItems();
+
             InventoryData inventoryData = JsonUtility.FromJson<InventoryData>(File.ReadAllText(Application.persistentDataPath + "/" + SceneManager.GetActiveScene().name + "_inventoryData"));
 
             var inventoryItems = inventoryData.itemNames;

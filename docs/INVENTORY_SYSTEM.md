@@ -237,6 +237,7 @@ DTInventory — «сеточный» инвентарь в духе Diablo/S.T.A
 | `RemoveItem(InventoryItem)` | `Weapon` (патроны), `ObjectPlacement` (ресурсы), `UseGrenade` |
 | `DropItem`, `UseItem`, `SubstractStack` | `InventoryItem`, `InventoryInteraction` |
 | `CheckIfItemExist(title)` | `WeaponManager` (гранаты) |
+| `ClearAllItems()` | `SaveData.Load` — полная очистка перед восстановлением сейва (добавлен 2026-11-26) |
 | `SearchLootBox(LootBox)` | `PickupItem` |
 | `FindSlotByIndex`, `autoEquipItems`, `inventoryItems` | `SaveData`, `DTFPSInventoryExtended` |
 | `levelPoint` | `LevelPoint` |
