@@ -146,6 +146,41 @@ namespace DTInventory
         private RectTransform lootContent;
         private ScrollRect lootScrollRect;
 
+        /// <summary>
+        /// Width of the inventory and loot scrollbars in pixels
+        /// </summary>
+        private const float scrollbarWidth = 24f;
+
+        /// <summary>
+        /// Paints a scrollbar in the inventory colors: the track takes the color of the panel it belongs to,
+        /// the handle takes the color of an occupied cell, so it stays visible on the track.
+        /// </summary>
+        private void StyleScrollbar(Transform scrollbarTransform, Image panelImage)
+        {
+            var scrollbarRect = scrollbarTransform.GetComponent<RectTransform>();
+            scrollbarRect.sizeDelta = new Vector2(scrollbarWidth, scrollbarRect.sizeDelta.y);
+
+            var trackImage = scrollbarTransform.GetComponent<Image>();
+            if (trackImage != null)
+                trackImage.color = panelImage != null ? panelImage.color : new Color(0.14f, 0.14f, 0.14f, 0.64f);
+
+            var scrollbar = scrollbarTransform.GetComponent<Scrollbar>();
+            var handleImage = scrollbar != null ? scrollbar.targetGraphic as Image : null;
+            if (handleImage != null)
+            {
+                handleImage.color = hoveredCellColor;
+
+                // The default button tint would brighten the handle back towards white on hover
+                var colors = scrollbar.colors;
+                colors.normalColor = Color.white;
+                colors.highlightedColor = new Color(1.25f, 1.25f, 1.25f, 1f);
+                colors.pressedColor = new Color(0.8f, 0.8f, 0.8f, 1f);
+                colors.selectedColor = Color.white;
+                colors.colorMultiplier = 1f;
+                scrollbar.colors = colors;
+            }
+        }
+
         private void InitializeScrollableGrid()
         {
             var viewportTransform = transform.Find("Inventory Viewport");
@@ -204,8 +239,7 @@ namespace DTInventory
                 scrollbarRect.anchorMax = new Vector2(0, 1);
                 scrollbarRect.pivot = new Vector2(0, 1);
                 scrollbarRect.anchoredPosition = new Vector2(column * cellSize + 2, 0);
-                scrollbarRect.sizeDelta = new Vector2(12, row * cellSize);
-                scrollbarObject.GetComponent<Image>().color = new Color(0, 0, 0, 0.35f);
+                scrollbarRect.sizeDelta = new Vector2(scrollbarWidth, row * cellSize);
 
                 var handleObject = new GameObject("Handle", typeof(RectTransform), typeof(Image));
                 handleObject.transform.SetParent(scrollbarTransform, false);
@@ -223,6 +257,7 @@ namespace DTInventory
                 scrollbar.targetGraphic = handleImage;
             }
 
+            StyleScrollbar(scrollbarTransform, GetComponent<Image>());
             gridScrollRect.verticalScrollbar = scrollbarTransform.GetComponent<Scrollbar>();
             gridScrollRect.verticalScrollbarVisibility = ScrollRect.ScrollbarVisibility.AutoHide;
             viewportTransform.SetAsFirstSibling();
@@ -289,8 +324,7 @@ namespace DTInventory
                 scrollbarRect.anchorMax = new Vector2(1, 1);
                 scrollbarRect.pivot = new Vector2(0, 1);
                 scrollbarRect.anchoredPosition = new Vector2(2, 0);
-                scrollbarRect.sizeDelta = new Vector2(12, lootPanel.rect.height);
-                scrollbarObject.GetComponent<Image>().color = new Color(0, 0, 0, 0.35f);
+                scrollbarRect.sizeDelta = new Vector2(scrollbarWidth, lootPanel.rect.height);
 
                 var handleObject = new GameObject("Handle", typeof(RectTransform), typeof(Image));
                 handleObject.transform.SetParent(scrollbarTransform, false);
@@ -308,6 +342,7 @@ namespace DTInventory
                 scrollbar.targetGraphic = handleImage;
             }
 
+            StyleScrollbar(scrollbarTransform, lootPanel.GetComponent<Image>());
             lootScrollRect.verticalScrollbar = scrollbarTransform.GetComponent<Scrollbar>();
             lootScrollRect.verticalScrollbarVisibility = ScrollRect.ScrollbarVisibility.AutoHide;
             viewportTransform.SetAsFirstSibling();
