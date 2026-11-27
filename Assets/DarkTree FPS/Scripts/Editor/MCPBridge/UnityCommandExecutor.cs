@@ -73,6 +73,15 @@ namespace DarkTreeFPS.MCPBridge
                 case "GetCompilationErrors":
                     return GetCompilationErrors();
 
+                case "CaptureScreenshot":
+                    return CaptureScreenshot();
+
+                case "DumpUI":
+                    return DumpUI(args);
+
+                case "DebugInventory":
+                    return DebugInventory(args);
+
                 default:
                     throw new ArgumentException($"Unknown command: {command}");
             }
@@ -625,6 +634,163 @@ namespace DarkTreeFPS.MCPBridge
 
                 return JsonConvert.SerializeObject(result);
             }
+        }
+
+        /// <summary>
+        /// Сохраняет снимок Game view в Temp/UnityTestLogs. Работает только в Play Mode;
+        /// файл появляется в конце текущего кадра.
+        /// </summary>
+        private static object CaptureScreenshot()
+        {
+            if (!EditorApplication.isPlaying)
+            {
+                return new
+                {
+                    success = false,
+                    error = "CaptureScreenshot works only in Play Mode: the Game view is not rendered otherwise."
+                };
+            }
+
+            string directory = System.IO.Path.GetFullPath(System.IO.Path.Combine(Application.dataPath, "../Temp/UnityTestLogs"));
+            System.IO.Directory.CreateDirectory(directory);
+            string path = System.IO.Path.Combine(directory, "screenshot-" + DateTime.Now.ToString("yyyyMMdd-HHmmss-fff") + ".png");
+
+            ScreenCapture.CaptureScreenshot(path);
+
+            return new
+            {
+                success = true,
+                path,
+                width = Screen.width,
+                height = Screen.height,
+                message = "Screenshot is written at the end of the current frame"
+            };
+        }
+
+        /// <summary>
+        /// Выгружает дерево UI под объектом с заданным именем: размеры, спрайты, цвета, порядок.
+        /// В отличие от /scene видит и объекты из DontDestroyOnLoad (игрок в Play Mode).
+        /// args: root (имя объекта), depth (по умолчанию 3), maxChildren (по умолчанию 40)
+        /// </summary>
+        private static object DumpUI(JObject args)
+        {
+            string rootName = args?["root"]?.ToString();
+            int depth = args?["depth"]?.ToObject<int>() ?? 3;
+            int maxChildren = args?["maxChildren"]?.ToObject<int>() ?? 40;
+
+            if (string.IsNullOrEmpty(rootName))
+                throw new ArgumentException("DumpUI requires 'root': the name of the GameObject to dump.");
+
+            var roots = new List<object>();
+            foreach (var rect in UnityEngine.Object.FindObjectsOfType<RectTransform>(true))
+            {
+                if (rect.name == rootName)
+                    roots.Add(DumpUINode(rect, depth, maxChildren));
+            }
+
+            return new { success = true, root = rootName, found = roots.Count, nodes = roots };
+        }
+
+        private static object DumpUINode(RectTransform rect, int depth, int maxChildren)
+        {
+            var node = new Dictionary<string, object>
+            {
+                ["name"] = rect.name,
+                ["active"] = rect.gameObject.activeInHierarchy,
+                ["pos"] = $"{rect.anchoredPosition.x:F0},{rect.anchoredPosition.y:F0}",
+                ["size"] = $"{rect.rect.width:F0}x{rect.rect.height:F0}",
+                ["scale"] = $"{rect.localScale.x:F2},{rect.localScale.y:F2},{rect.localScale.z:F2}"
+            };
+
+            var image = rect.GetComponent<UnityEngine.UI.Image>();
+            if (image != null)
+            {
+                node["image"] = (image.enabled ? "" : "(disabled) ") +
+                    (image.sprite != null ? image.sprite.name : "no sprite") + " " + image.type +
+                    $" rgba({image.color.r:F2},{image.color.g:F2},{image.color.b:F2},{image.color.a:F2})";
+            }
+
+            var others = new List<string>();
+            foreach (var component in rect.GetComponents<Component>())
+            {
+                if (component == null || component is RectTransform || component is CanvasRenderer || component is UnityEngine.UI.Image)
+                    continue;
+                others.Add(component.GetType().Name);
+            }
+            if (others.Count > 0)
+                node["components"] = string.Join(",", others);
+
+            var inventory = rect.GetComponent<DTInventory.DTInventory>();
+            if (inventory != null)
+            {
+                node["cellColors"] = $"normal={inventory.normalCellColor} hovered={inventory.hoveredCellColor} blocked={inventory.blockedCellColor}";
+                node["slots"] = inventory.slots != null ? inventory.slots.Count : 0;
+                node["items"] = inventory.inventoryItems != null ? inventory.inventoryItems.Count : 0;
+            }
+
+            var slot = rect.GetComponent<DTInventory.GridSlot>();
+            if (slot != null)
+            {
+                node["slot"] = $"{slot.x},{slot.y} free={slot.free} ownImage={(slot.image != null && slot.image.gameObject == rect.gameObject)}";
+            }
+
+            node["childCount"] = rect.childCount;
+
+            if (depth > 0 && rect.childCount > 0)
+            {
+                var children = new List<object>();
+                for (int i = 0; i < rect.childCount && i < maxChildren; i++)
+                {
+                    if (rect.GetChild(i) is RectTransform child)
+                        children.Add(DumpUINode(child, depth - 1, maxChildren));
+                }
+                node["children"] = children;
+            }
+
+            return node;
+        }
+
+        /// <summary>
+        /// Отладка инвентаря в Play Mode без ввода с клавиатуры.
+        /// args: open (bool) - открыть/закрыть окно; addItem (string) - название предмета из AssetsDatabase,
+        /// который нужно создать и положить в инвентарь тем же путём, что и при подборе.
+        /// </summary>
+        private static object DebugInventory(JObject args)
+        {
+            if (!EditorApplication.isPlaying)
+                return new { success = false, error = "DebugInventory works only in Play Mode." };
+
+            var inventory = UnityEngine.Object.FindObjectOfType<DTInventory.DTInventory>();
+            if (inventory == null)
+                return new { success = false, error = "DTInventory not found." };
+
+            string added = null;
+            bool? addResult = null;
+            string title = args?["addItem"]?.ToString();
+
+            if (!string.IsNullOrEmpty(title))
+            {
+                var database = UnityEngine.Object.FindObjectOfType<DTInventory.AssetsDatabase>();
+                var prefab = database != null ? database.FindItem(title) : null;
+                if (prefab == null)
+                    return new { success = false, error = "Item '" + title + "' not found in AssetsDatabase." };
+
+                var item = UnityEngine.Object.Instantiate(prefab);
+                addResult = inventory.AddItem(item);
+                added = item.title;
+            }
+
+            if (args?["open"] != null)
+                DTInventory.InventoryManager.showInventory = args["open"].ToObject<bool>();
+
+            return new
+            {
+                success = true,
+                added,
+                addResult,
+                open = DTInventory.InventoryManager.showInventory,
+                items = inventory.inventoryItems.Count
+            };
         }
 
         private static object SaveScene()
