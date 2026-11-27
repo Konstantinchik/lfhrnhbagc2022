@@ -55,6 +55,23 @@ namespace DTInventory {
             FindObjectOfType<WeaponManager>().EquipmentPanelDisableRemovedWeapon(lastItem);
         }
 
+        /// <summary>
+        /// Empties the panel right away, with the same callbacks as when an item is taken out.
+        /// Needed when one item replaces another within a frame: Update() only notices the panel
+        /// becoming empty or filled, so it would miss the change and the old weapon would stay in hands.
+        /// </summary>
+        public void ClearItem()
+        {
+            if (lastItem != null)
+            {
+                Local_EquipmentPanelDisableRemovedWeapon();
+                OnItemRemove.Invoke();
+            }
+
+            equipedItem = null;
+            lastItem = null;
+        }
+
         private void Update()
         {
             if(equipedItem != null && lastItem == null)

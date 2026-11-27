@@ -23,6 +23,11 @@ namespace DTInventory
         Image image;
 
         /// <summary>
+        /// Child image that draws the item icon
+        /// </summary>
+        Image iconImage;
+
+        /// <summary>
         /// Reference to an item. Item and InventoryItem are not the same. InventoryItem it's a special component which allow us to draw item in inventory
         /// </summary>
         public Item item;
@@ -71,6 +76,11 @@ namespace DTInventory
         SoundManager soundManager;
 
         public EquipmentPanel myEquipmentPanel;
+
+        /// <summary>
+        /// Equipment panel the current drag started from (null when it started in a grid)
+        /// </summary>
+        EquipmentPanel dragOriginPanel;
 
         private void OnEnable()
         {
@@ -159,6 +169,9 @@ namespace DTInventory
             //Find occupied slot and setting it free
             var slot = inventory.FindSlotByIndex(x, y);
 
+            //Remember where the drag started: a weapon swapped out of its slot can go back there
+            dragOriginPanel = slot.equipmentPanel;
+
             //If InventoryItem in equipment slot, removing refernce for it on equip component
             if (slot.equipmentPanel != null)
             {
@@ -175,7 +188,7 @@ namespace DTInventory
             transform.SetAsLastSibling();
 
             //Make item image semi-transparent
-            image.color = new Color(1, 1, 1, 0.5f);
+            SetIconColor(new Color(1, 1, 1, 0.5f));
         }
         
         // Here is the event callback of an item drag
@@ -237,9 +250,28 @@ namespace DTInventory
             }
         }
 
+        /// <summary>
+        /// Tints the visible icon. The icon is drawn by a child object (see DTInventory.ApplyItemIcon);
+        /// the item's own image is only an invisible click/drag area.
+        /// </summary>
+        private void SetIconColor(Color color)
+        {
+            if (iconImage == null)
+            {
+                var iconTransform = transform.Find(DTInventory.itemIconObjectName);
+                if (iconTransform != null)
+                    iconImage = iconTransform.GetComponent<Image>();
+            }
+
+            if (iconImage != null)
+                iconImage.color = color;
+            else if (image != null)
+                image.color = color;
+        }
+
         public void OnEndDrag(PointerEventData eventData)
         {
-            image.color = Color.white;
+            SetIconColor(Color.white);
 
             Cursor.visible = true;
 
@@ -276,24 +308,15 @@ namespace DTInventory
             var targetSlot = hoveredObject != null ? hoveredObject.GetComponent<GridSlot>() : null;
             if (targetSlot != null)
             {
-                var shiftedAxes = CalculateShiftedAxes();
-
                 if (targetSlot.equipmentPanel != null)
                 {
-                    if (inventory.CheckFreeSpaceAtSlot(shiftedAxes.x, shiftedAxes.y, width, height)
-                        && targetSlot.free
-                        && targetSlot.equipmentPanel.allowedItemType == item.type)
-                    {
-                        PlaceAtSlot(targetSlot, shiftedAxes.x, shiftedAxes.y);
-                        targetSlot.equipmentPanel.equipedItem = item;
-                        myEquipmentPanel = targetSlot.equipmentPanel;
-                        return;
-                    }
+                    if (!TryEquipTo(targetSlot.equipmentPanel))
+                        RestorePreviousPosition();
 
-                    RestorePreviousPosition();
                     return;
                 }
 
+                var shiftedAxes = CalculateShiftedAxes();
                 PlaceInNearestGridSlot(shiftedAxes.x, shiftedAxes.y, targetSlot.isLoot);
                 return;
             }
@@ -306,9 +329,97 @@ namespace DTInventory
                     PlaceInNearestGridSlot(hoveredItem.x, hoveredItem.y, itemSlot.isLoot);
                     return;
                 }
+
+                //Dropped onto an item that sits in an equipment slot: swap it out
+                if (itemSlot != null && itemSlot.equipmentPanel != null && TryEquipTo(itemSlot.equipmentPanel))
+                    return;
             }
 
             RestorePreviousPosition();
+        }
+
+        /// <summary>
+        /// Puts this (currently dragged) item into an equipment panel. If the panel is occupied,
+        /// the item in it is moved out first: back to the panel this drag started from when it fits there,
+        /// otherwise into the first free place of the inventory grid.
+        /// </summary>
+        private bool TryEquipTo(EquipmentPanel panel)
+        {
+            if (panel == null || panel.mainSlot == null || item == null || panel.allowedItemType != item.type)
+                return false;
+
+            InventoryItem occupant = null;
+            foreach (var other in inventory.inventoryItems)
+            {
+                if (other == null || other == this)
+                    continue;
+
+                var otherSlot = inventory.FindSlotByIndex(other.x, other.y);
+                if (otherSlot != null && otherSlot.equipmentPanel == panel)
+                {
+                    occupant = other;
+                    break;
+                }
+            }
+
+            var mainSlot = panel.mainSlot;
+
+            if (occupant != null)
+            {
+                //Make sure this item would fit before moving the other one away
+                if (width > panel.width || height > panel.height || !occupant.MoveOutOfPanel(dragOriginPanel))
+                    return false;
+            }
+
+            if (!inventory.CheckFreeSpaceAtSlot(mainSlot.x, mainSlot.y, width, height))
+                return false;
+
+            PlaceAtSlot(mainSlot, mainSlot.x, mainSlot.y);
+            panel.equipedItem = item;
+            myEquipmentPanel = panel;
+            return true;
+        }
+
+        /// <summary>
+        /// Moves this item out of its equipment panel to make room for another one
+        /// </summary>
+        private bool MoveOutOfPanel(EquipmentPanel preferredPanel)
+        {
+            var currentSlot = inventory.FindSlotByIndex(x, y);
+            var currentPanel = currentSlot != null ? currentSlot.equipmentPanel : null;
+
+            GridSlot destination = null;
+            EquipmentPanel destinationPanel = null;
+
+            if (preferredPanel != null && preferredPanel != currentPanel && preferredPanel.mainSlot != null
+                && preferredPanel.allowedItemType == item.type && preferredPanel.equipedItem == null
+                && inventory.CheckFreeSpaceAtSlot(preferredPanel.mainSlot.x, preferredPanel.mainSlot.y, width, height))
+            {
+                destination = preferredPanel.mainSlot;
+                destinationPanel = preferredPanel;
+            }
+            else
+            {
+                destination = inventory.CheckFreeSpaceForAllSlots(width, height);
+            }
+
+            if (destination == null)
+                return false;
+
+            inventory.MarkSlots(x, y, width, height, true);
+
+            if (currentPanel != null)
+                currentPanel.ClearItem();
+
+            PlaceAtSlot(destination, destination.x, destination.y);
+
+            if (destinationPanel != null)
+            {
+                destinationPanel.equipedItem = item;
+                myEquipmentPanel = destinationPanel;
+            }
+
+            return true;
         }
 
         private void PlaceInNearestGridSlot(int desiredX, int desiredY, bool isLoot)

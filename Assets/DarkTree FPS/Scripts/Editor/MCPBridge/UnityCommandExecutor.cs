@@ -783,13 +783,99 @@ namespace DarkTreeFPS.MCPBridge
             if (args?["open"] != null)
                 DTInventory.InventoryManager.showInventory = args["open"].ToObject<bool>();
 
+            // drag (название предмета) + dropOnPanel (индекс слота экипировки): проводит предмет через
+            // настоящие обработчики OnBeginDrag/OnEndDrag. dragFromPanel выбирает экземпляр в слоте,
+            // иначе берётся экземпляр из сетки.
+            string dragResult = null;
+            string dragTitle = args?["drag"]?.ToString();
+            if (!string.IsNullOrEmpty(dragTitle) && args?["dropOnPanel"] != null)
+            {
+                int dropIndex = args["dropOnPanel"].ToObject<int>();
+                int? fromIndex = args["dragFromPanel"] != null ? args["dragFromPanel"].ToObject<int>() : (int?)null;
+
+                if (dropIndex < 0 || dropIndex >= inventory.equipmentPanels.Count)
+                    return new { success = false, error = "dropOnPanel is out of range." };
+
+                var targetPanel = inventory.equipmentPanels[dropIndex];
+                DTInventory.InventoryItem source = null;
+                DTInventory.InventoryItem occupant = null;
+
+                foreach (var candidate in inventory.inventoryItems)
+                {
+                    if (candidate == null || candidate.item == null)
+                        continue;
+
+                    var candidateSlot = inventory.FindSlotByIndex(candidate.x, candidate.y);
+                    var candidatePanel = candidateSlot != null ? candidateSlot.equipmentPanel : null;
+
+                    if (candidatePanel == targetPanel)
+                        occupant = candidate;
+
+                    if (source == null && candidate.item.title == dragTitle)
+                    {
+                        bool matches = fromIndex.HasValue
+                            ? candidatePanel == inventory.equipmentPanels[fromIndex.Value]
+                            : candidatePanel == null;
+                        if (matches)
+                            source = candidate;
+                    }
+                }
+
+                if (source == null)
+                    return new { success = false, error = "No '" + dragTitle + "' found at the requested place." };
+
+                GameObject dropTarget = occupant != null && occupant != source
+                    ? occupant.gameObject
+                    : targetPanel.mainSlot.gameObject;
+
+                source.OnBeginDrag(null);
+                var eventData = new UnityEngine.EventSystems.PointerEventData(UnityEngine.EventSystems.EventSystem.current)
+                {
+                    pointerCurrentRaycast = new UnityEngine.EventSystems.RaycastResult { gameObject = dropTarget }
+                };
+                source.OnEndDrag(eventData);
+                dragResult = "dropped " + dragTitle + " on " + dropTarget.name;
+            }
+
+            // Итоговая раскладка: что в каждом слоте и где лежит каждый предмет
+            var panels = new List<string>();
+            for (int i = 0; i < inventory.equipmentPanels.Count; i++)
+            {
+                var panel = inventory.equipmentPanels[i];
+                panels.Add(i + ":" + panel.allowedItemType + "=" + (panel.equipedItem != null ? panel.equipedItem.title : "-"));
+            }
+
+            var placement = new List<string>();
+            int occupiedCells = 0;
+            foreach (var slot in inventory.slots)
+            {
+                if (slot != null && !slot.free)
+                    occupiedCells++;
+            }
+            int expectedCells = 0;
+            foreach (var inventoryItem in inventory.inventoryItems)
+            {
+                if (inventoryItem == null || inventoryItem.item == null)
+                    continue;
+                expectedCells += inventoryItem.width * inventoryItem.height;
+                placement.Add(inventoryItem.item.title + "@" + inventoryItem.x + "," + inventoryItem.y);
+            }
+
+            var weaponManager = UnityEngine.Object.FindObjectOfType<DarkTreeFPS.WeaponManager>();
+
             return new
             {
                 success = true,
                 added,
                 addResult,
+                dragResult,
                 open = DTInventory.InventoryManager.showInventory,
-                items = inventory.inventoryItems.Count
+                items = inventory.inventoryItems.Count,
+                panels,
+                placement,
+                occupiedCells,
+                expectedCells,
+                activeWeapon = weaponManager != null && weaponManager.activeWeapon != null ? weaponManager.activeWeapon.weaponName : null
             };
         }
 

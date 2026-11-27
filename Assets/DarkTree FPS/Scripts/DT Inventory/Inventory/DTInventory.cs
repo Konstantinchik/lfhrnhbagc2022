@@ -181,6 +181,43 @@ namespace DTInventory
             }
         }
 
+        /// <summary>
+        /// Name of the child object that draws the item icon inside an inventory item
+        /// </summary>
+        public const string itemIconObjectName = "Icon";
+
+        /// <summary>
+        /// Shows the item icon centered and with its own proportions. Icons are not always the same shape
+        /// as the item's cells, and the item image itself can't be used for that: its pivot is animated,
+        /// which would pin a proportional icon to a corner. So the item image stays as an invisible
+        /// click/drag area and the icon is drawn by a child that fills it.
+        /// </summary>
+        private void ApplyItemIcon(Image itemImage, Sprite icon)
+        {
+            itemImage.sprite = null;
+            //Practically invisible, but not fully transparent: a fully transparent graphic may be culled
+            //and then would stop receiving clicks and drags
+            itemImage.color = new Color(1f, 1f, 1f, 0.004f);
+
+            var iconObject = new GameObject(itemIconObjectName, typeof(RectTransform), typeof(Image));
+            var iconRect = iconObject.GetComponent<RectTransform>();
+            iconRect.SetParent(itemImage.rectTransform, false);
+            iconRect.anchorMin = Vector2.zero;
+            iconRect.anchorMax = Vector2.one;
+            iconRect.offsetMin = Vector2.zero;
+            iconRect.offsetMax = Vector2.zero;
+            iconRect.pivot = new Vector2(0.5f, 0.5f);
+            //Below the stack counter
+            iconRect.SetAsFirstSibling();
+
+            var iconImage = iconObject.GetComponent<Image>();
+            iconImage.sprite = icon;
+            iconImage.type = Image.Type.Simple;
+            iconImage.preserveAspect = true;
+            iconImage.raycastTarget = false;
+            iconImage.enabled = icon != null;
+        }
+
         private void InitializeScrollableGrid()
         {
             var viewportTransform = transform.Find("Inventory Viewport");
@@ -603,8 +640,7 @@ namespace DTInventory
                 _InventoryItemImage.rectTransform.SetParent(gridContent, false);
                 _InventoryItemImage.rectTransform.sizeDelta = new Vector2(cellSize * item.width - padding, cellSize * item.height - padding);
                 _InventoryItemImage.rectTransform.anchoredPosition = _slot.GetComponent<RectTransform>().anchoredPosition;
-                _InventoryItemImage.color = Color.white;
-                _InventoryItemImage.sprite = item.icon;
+                ApplyItemIcon(_InventoryItemImage, item.icon);
 
                 _InventoryItem.item = item;
 
@@ -686,7 +722,7 @@ namespace DTInventory
 
                 _InventoryItem.item = item;
 
-                _InventoryItemImage.sprite = item.icon;
+                ApplyItemIcon(_InventoryItemImage, item.icon);
                 _InventoryItem.x = x;
                 _InventoryItem.y = y;
                 _InventoryItem.width = item.width;
